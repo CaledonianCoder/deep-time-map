@@ -44,3 +44,5 @@ then open http://localhost:8000.
 ## Sources
 
 Plate model: PALEOMAP (C. R. Scotese 2016), via the public GPlates files. Climate: PhanDA (Judd et al. 2024, Apache 2.0) and GEOCARBSULFOR (Krause et al. 2018, 2022 runs); Precambrian ranges after Catling & Zahnle 2020 and Lyons et al. 2014. Fossils: Paleobiology Database (CC BY 4.0), via exports in the petra, dinotime and naheim/PBDB_Scripts GitHub projects and direct API downloads; PaleoReefs via the palaeoverse R package; Macrostrat; Natural Earth coastlines via world-atlas; game-icons.net silhouettes (CC BY 3.0); mass extinction figures from Barnosky et al. 2011 via Our World in Data.
+
+`build/standalone.py` adds the full HTML header (doctype, character set, phone viewport) to each page in `versions/`, so the pages behave the same on GitHub Pages as they do as Claude artifacts. Run it after copying in a new version.

@@ -170,6 +170,9 @@ button, input, select { font: inherit; color: inherit; }
 #zoomctl { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 222px; display: flex; flex-direction: column; gap: 6px; }
 #zoomctl button { width: 34px; height: 34px; border-radius: 8px; font-size: 18px; cursor: pointer; padding: 0; }
 #loading { position: absolute; inset: 0; display: grid; place-items: center; font: 400 22px var(--f-display); color: var(--muted); pointer-events: none; }
+#loading { transition: opacity .6s ease; }
+#loading.gone { opacity: 0; }
+[hidden] { display: none !important; }
 #legend-toggle { display: none; }
 
 #tip { position: absolute; z-index: 7; pointer-events: none; padding: 8px 11px; border-radius: 8px; font-size: 12.5px; }
@@ -342,6 +345,16 @@ button, input, select { font: inherit; color: inherit; }
   </div>
 </div>
 
+<script>
+// Loading message: fades when the data is ready, and in any case after 10 seconds.
+// Kept in its own script so the fallback still runs if anything below fails.
+var loadFailed = false;
+function hideLoading() {
+  var el = document.getElementById('loading'); if (!el || el.hidden || el.classList.contains('gone')) return;
+  el.classList.add('gone'); setTimeout(function () { el.hidden = true; }, 650);
+}
+setTimeout(function () { if (!window.loadFailed) hideLoading(); }, 10000);
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <script>
@@ -868,7 +881,7 @@ async function load() {
   $('#about-count').textContent = `${D.occurrences.toLocaleString()} fossil occurrences in ${units.length} groups.`;
   buildLegend(); buildIcons(); buildJumps(); setupLayers(); buildExtinctionMarks();
   resize(); setupZoom();
-  $('#loading').hidden = true;
+  hideLoading();
   const fromHash = setupSearch();
   setTime(150);
   if (location.hash.length > 1) setTimeout(fromHash, 50);
@@ -1663,5 +1676,5 @@ const retheme = () => { if (!D) return; buildIcons(); render(); drawTimeline(); 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', retheme);
 new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-load().catch(err => { $('#loading').textContent = 'The fossil data could not be loaded. Reload the page to try again.'; console.error(err); });
+load().catch(err => { window.loadFailed = true; $('#loading').textContent = 'The fossil data could not be loaded. Reload the page to try again.'; console.error(err); });
 </script>
