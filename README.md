@@ -4,7 +4,7 @@ An interactive Mercator map of the fossil record from 4,000 million years ago to
 
 ## Folders
 
-- `versions/v1` … `versions/v18`: each published version of the page (`index.html` plus its data files `fossils.json` and `land.json`).
+- `versions/v1` … `versions/v19`: each published version of the page (`index.html` plus its data files `fossils.json` and `land.json`).
   - v1: icons scaled by abundance, time slider
   - v2: hover tooltips, dominance patches
   - v3: community descriptions with rock formation
@@ -22,7 +22,8 @@ An interactive Mercator map of the fossil record from 4,000 million years ago to
   - v15: minimisable group panel and compact readout
   - v16: Cenozoic “dinosaur” records reclassified as birds; time window stops at mass extinctions
   - v17: stem-and-leaf icon for early land plants
-  - v18: continents and fossils where they were at the time (PALEOMAP plate model) (latest)
+  - v18: continents and fossils where they were at the time (PALEOMAP plate model)
+  - v19: "Who lived here" panel overlays the timeline; new default settings (latest)
 - `build/`: the Python scripts that build `fossils.json` and the HTML templates (`__ICONS__` is replaced with `icons.json`). The scripts expect the source data at the paths used in the session and will need their paths edited to rerun.
 - `build/build_paleo.py` rotates every fossil and today's coastlines to their ancient positions with pygplates and the PALEOMAP model (Scotese 2016), writing `paleo_pts.json` and `land/<age>.json`.
 - `build/build_climate.py` builds `climate.json` from PhanDA (Judd et al. 2024) and GEOCARBSULFOR (Krause et al.) outputs.
@@ -35,7 +36,7 @@ An interactive Mercator map of the fossil record from 4,000 million years ago to
 
 Browsers block a page opened straight from disk (`file://`) from loading its data files. To view a version locally, run a small web server in its folder, for example:
 
-    cd versions/v18
+    cd versions/v19
     python -m http.server 8000
 
 then open http://localhost:8000.
