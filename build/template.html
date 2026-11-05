@@ -1,0 +1,610 @@
+<title>Deep Time Atlas</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed map canvas; floating time readout top-left, animal legend docked right, geologic timeline docked along the bottom. */
+:root {
+  --ocean: #c7d6da;
+  --land: #e8ebe2;
+  --coast: #98aaa7;
+  --grat: rgba(40, 70, 80, .08);
+  --ink: #1b2a2e;
+  --muted: #586a6d;
+  --panel: rgba(247, 249, 247, .93);
+  --panel-solid: #f7f9f7;
+  --line: #c3cfcd;
+  --accent: #17656e;
+  --halo: #f8faf6;
+  --shadow: 0 6px 24px rgba(20, 40, 45, .14);
+  --f-display: "Gloock", "Iowan Old Style", Georgia, serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ocean: #0c171b; --land: #232e2c; --coast: #3b4c49; --grat: rgba(170, 210, 210, .06);
+    --ink: #e2eae7; --muted: #92a3a0; --panel: rgba(16, 26, 29, .93); --panel-solid: #101a1d;
+    --line: #2e3d3e; --accent: #5cc3c4; --halo: #0c171b; --shadow: 0 6px 24px rgba(0,0,0,.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ocean: #0c171b; --land: #232e2c; --coast: #3b4c49; --grat: rgba(170, 210, 210, .06);
+  --ink: #e2eae7; --muted: #92a3a0; --panel: rgba(16, 26, 29, .93); --panel-solid: #101a1d;
+  --line: #2e3d3e; --accent: #5cc3c4; --halo: #0c171b; --shadow: 0 6px 24px rgba(0,0,0,.45);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--ocean); color: var(--ink); font: 14px/1.45 var(--f-body); overflow: hidden; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#app { position: relative; height: 100%; width: 100%; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#map.dragging { cursor: grabbing; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+
+/* time readout */
+#readout { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); padding: 12px 16px 12px; border-radius: 10px; max-width: min(360px, calc(100% - 32px)); pointer-events: none; }
+#readout .brand { font: 600 11px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+#ma { font: 400 44px/1.05 var(--f-display); margin-top: 6px; font-variant-numeric: tabular-nums; }
+#ma small { font: 500 15px var(--f-mono); color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+#interval { font-weight: 600; margin-top: 2px; }
+#interval .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.15); }
+#stats { color: var(--muted); font-size: 12.5px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+/* legend */
+#legend { position: absolute; top: 14px; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 150px; width: 300px; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+#legend header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px 8px; border-bottom: 1px solid var(--line); }
+#legend h2 { font: 400 19px/1.2 var(--f-display); margin: 0; }
+#legend .hint { font-size: 12px; color: var(--muted); padding: 6px 14px 8px; border-bottom: 1px solid var(--line); }
+#units { overflow-y: auto; padding: 4px 0 10px; flex: 1; min-height: 0; }
+.sec { margin-top: 6px; }
+.sec-head { display: flex; align-items: center; gap: 8px; padding: 6px 14px 4px; font: 600 11px/1 var(--f-body); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.sec-head input { margin: 0; }
+.row { display: grid; grid-template-columns: 18px 22px minmax(0,1fr) 64px; align-items: center; gap: 8px; padding: 3px 14px; }
+.row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.row input { margin: 0; }
+.row img { width: 22px; height: 22px; display: block; }
+.row button.name { text-align: left; background: none; border: 0; padding: 2px 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row button.name:hover { text-decoration: underline; text-underline-offset: 2px; }
+.row.absent .name, .row.absent img { opacity: .42; }
+.row.off .name, .row.off img, .row.off canvas { opacity: .3; }
+.row.solo { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.row.solo .name { font-weight: 600; }
+.row canvas { width: 64px; height: 18px; display: block; }
+.genus-tag { font: 500 10px var(--f-mono); color: var(--muted); margin-left: 4px; }
+
+.iconbtn { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12.5px; }
+.iconbtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* timeline */
+#timeline { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); border-radius: 10px; padding: 10px 14px 10px; }
+#tl-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+#play { min-width: 74px; font-weight: 600; background: var(--accent); color: var(--panel-solid); border: 0; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+#speed { border: 1px solid var(--line); background: transparent; border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
+#jumps { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+#jumps button { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+#jumps button:hover { border-color: var(--accent); color: var(--accent); }
+#curve-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+#track { position: relative; height: 64px; }
+#tl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#time { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: ew-resize; }
+#time::-webkit-slider-runnable-track { height: 64px; background: transparent; }
+#time::-moz-range-track { height: 64px; background: transparent; }
+#time::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 64px; background: transparent; border: 0; }
+#time::-moz-range-thumb { width: 14px; height: 64px; background: transparent; border: 0; }
+
+/* popup */
+#pop { position: absolute; z-index: 5; width: 300px; max-width: calc(100% - 32px); border-radius: 10px; padding: 12px 14px; font-size: 13px; }
+#pop h3 { font: 400 18px/1.2 var(--f-display); margin: 0 26px 2px 0; }
+#pop .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+#pop .close { position: absolute; top: 8px; right: 8px; border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--muted); padding: 4px 6px; }
+#pop .grp { display: grid; grid-template-columns: 22px minmax(0,1fr) auto; gap: 4px 8px; align-items: start; padding: 6px 0; border-top: 1px solid var(--line); }
+#pop .grp img { width: 22px; height: 22px; }
+#pop .grp b { font-weight: 600; }
+#pop .grp .n { font: 500 12px var(--f-mono); color: var(--muted); }
+#pop .gen { grid-column: 2 / 4; font-size: 12.5px; color: var(--muted); }
+#pop .gen a { color: var(--ink); text-decoration-color: var(--line); text-underline-offset: 2px; }
+#pop .gen a:hover { color: var(--accent); }
+#pop .gen .pb { font: 500 10.5px var(--f-mono); }
+
+/* about */
+#about { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(520px, calc(100% - 32px)); max-height: calc(100% - 60px); overflow-y: auto; border-radius: 12px; padding: 20px 22px; font-size: 13.5px; }
+#about h2 { font: 400 24px/1.15 var(--f-display); margin: 0 0 8px; text-wrap: balance; }
+#about p { margin: 0 0 10px; max-width: 65ch; }
+#about a { color: var(--accent); }
+#about .close { position: absolute; top: 10px; right: 10px; }
+#zoomctl { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 170px; display: flex; flex-direction: column; gap: 6px; }
+#zoomctl button { width: 34px; height: 34px; border-radius: 8px; font-size: 18px; cursor: pointer; padding: 0; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; font: 400 22px var(--f-display); color: var(--muted); pointer-events: none; }
+#legend-toggle { display: none; }
+
+@media (max-width: 760px) {
+  #readout { padding: 9px 12px; top: 10px; max-width: calc(100% - 132px); }
+  #ma { font-size: 32px; }
+  #ma small { display: block; margin: 2px 0 0; font-size: 12px; }
+  #legend { top: auto; bottom: 168px; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 52%; }
+  #legend:not(.open) { display: none; }
+  #legend-toggle { display: block; position: absolute; top: 10px; right: max(16px, env(safe-area-inset-right, 0px)); border-radius: 8px; padding: 7px 11px; font-weight: 600; cursor: pointer; }
+  #jumps { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  #curve-label { display: none; }
+  #zoomctl { bottom: 196px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app">
+  <canvas id="map" aria-label="World map of fossil occurrences"></canvas>
+  <div id="loading">Unearthing 600,000 fossils…</div>
+
+  <section id="readout" class="panel" aria-live="polite">
+    <div class="brand">Deep Time Atlas</div>
+    <div id="ma">150<small>Ma</small></div>
+    <div id="interval"></div>
+    <div id="stats"></div>
+  </section>
+
+  <button id="legend-toggle" class="panel" aria-controls="legend" aria-expanded="false">Animals</button>
+  <aside id="legend" class="panel" aria-label="Animal groups">
+    <header>
+      <h2>Who lived here</h2>
+      <div style="display:flex;gap:6px">
+        <button class="iconbtn" id="all-on">All</button>
+        <button class="iconbtn" id="about-btn">About</button>
+      </div>
+    </header>
+    <div class="hint">Icon size follows how common a group is in the fossil record, relative to its own peak. Tick to show; tap a name to show it alone.</div>
+    <div id="units"></div>
+  </aside>
+
+  <div id="zoomctl">
+    <button class="panel" id="zin" aria-label="Zoom in">+</button>
+    <button class="panel" id="zout" aria-label="Zoom out">−</button>
+  </div>
+
+  <section id="timeline" class="panel" aria-label="Geologic time">
+    <div id="tl-top">
+      <button id="play" aria-label="Play forward through time">▶ Play</button>
+      <select id="speed" aria-label="Playback speed">
+        <option value="2">2 Myr/s</option>
+        <option value="6" selected>6 Myr/s</option>
+        <option value="15">15 Myr/s</option>
+      </select>
+      <div id="jumps"></div>
+      <div id="curve-label"></div>
+    </div>
+    <div id="track">
+      <canvas id="tl-canvas"></canvas>
+      <input type="range" id="time" min="0" max="541" step="0.5" value="391" aria-label="Millions of years ago">
+    </div>
+  </section>
+
+  <div id="pop" class="panel" hidden role="dialog" aria-label="Fossils here"></div>
+
+  <div id="about" class="panel" hidden role="dialog" aria-label="About this map">
+    <button class="iconbtn close" id="about-close">Close</button>
+    <h2>About the Deep Time Atlas</h2>
+    <p>Each icon marks fossils found at that spot, plotted on today’s continents. Drag the timeline and the icons grow where a group is common in rocks of that age and shrink as it becomes rare. Sizes are relative to each group’s own peak, so a rare animal like <i>Velociraptor</i> still shows at full size where it is best known.</p>
+    <p>The time window is 5 million years wide. A fossil dated only loosely (for example “Late Cretaceous”, 34 million years) is spread across its whole range, so it counts for less at any one moment than a precisely dated find.</p>
+    <p>Fossil occurrences come from the <a href="https://paleobiodb.org" target="_blank" rel="noopener">Paleobiology Database</a> (CC BY 4.0), via public exports in three open-source projects: <a href="https://github.com/MaxShih147/petra" target="_blank" rel="noopener">petra</a> (classified dinosaurs and birds), <a href="https://github.com/corestriker/dinotime" target="_blank" rel="noopener">dinotime</a> (reptiles) and the Heim lab’s <a href="https://github.com/naheim/PBDB_Scripts" target="_blank" rel="noopener">PBDB_Scripts</a> (about 650,000 animal occurrences across the last 540 million years). These are snapshots, so the newest finds are missing. Dinosaur names link to their pages on <a href="https://dinosaurpictures.org" target="_blank" rel="noopener">dinosaurpictures.org</a>, which is built on the same database.</p>
+    <p>Silhouettes from <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> by Delapouite, Lorc, Caro Asercion and Faithtoken (CC BY 3.0). Coastlines from Natural Earth. Period colours follow the International Commission on Stratigraphy chart; stage ages are approximate.</p>
+    <p id="about-count"></p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+const ICONS = __ICONS__;
+
+// ICS periods: [name, base Ma, colour]
+const PERIODS = [
+  ['Quaternary', 2.58, '#F9F97F'], ['Neogene', 23.03, '#FFE619'], ['Paleogene', 66.0, '#FD9A52'],
+  ['Cretaceous', 145.0, '#7FC64E'], ['Jurassic', 201.4, '#34B2C9'], ['Triassic', 251.9, '#812B92'],
+  ['Permian', 298.9, '#F04028'], ['Carboniferous', 358.9, '#67A599'], ['Devonian', 419.2, '#CB8C37'],
+  ['Silurian', 443.8, '#B3E1B6'], ['Ordovician', 485.4, '#009270'], ['Cambrian', 538.8, '#7FA056'],
+];
+// [epoch, stage, base Ma]
+const STAGES = [
+ ['Holocene','Holocene',0.0117],['Pleistocene','Late Pleistocene',0.129],['Pleistocene','Chibanian',0.774],['Pleistocene','Calabrian',1.8],['Pleistocene','Gelasian',2.58],
+ ['Pliocene','Piacenzian',3.6],['Pliocene','Zanclean',5.333],['Miocene','Messinian',7.246],['Miocene','Tortonian',11.63],['Miocene','Serravallian',13.82],['Miocene','Langhian',15.98],['Miocene','Burdigalian',20.44],['Miocene','Aquitanian',23.03],
+ ['Oligocene','Chattian',27.82],['Oligocene','Rupelian',33.9],['Eocene','Priabonian',37.71],['Eocene','Bartonian',41.2],['Eocene','Lutetian',47.8],['Eocene','Ypresian',56.0],['Paleocene','Thanetian',59.2],['Paleocene','Selandian',61.6],['Paleocene','Danian',66.0],
+ ['Late Cretaceous','Maastrichtian',72.1],['Late Cretaceous','Campanian',83.6],['Late Cretaceous','Santonian',86.3],['Late Cretaceous','Coniacian',89.8],['Late Cretaceous','Turonian',93.9],['Late Cretaceous','Cenomanian',100.5],
+ ['Early Cretaceous','Albian',113.0],['Early Cretaceous','Aptian',121.4],['Early Cretaceous','Barremian',125.77],['Early Cretaceous','Hauterivian',132.6],['Early Cretaceous','Valanginian',139.8],['Early Cretaceous','Berriasian',145.0],
+ ['Late Jurassic','Tithonian',149.2],['Late Jurassic','Kimmeridgian',154.8],['Late Jurassic','Oxfordian',161.5],['Middle Jurassic','Callovian',165.3],['Middle Jurassic','Bathonian',168.2],['Middle Jurassic','Bajocian',170.9],['Middle Jurassic','Aalenian',174.7],
+ ['Early Jurassic','Toarcian',184.2],['Early Jurassic','Pliensbachian',192.9],['Early Jurassic','Sinemurian',199.5],['Early Jurassic','Hettangian',201.4],
+ ['Late Triassic','Rhaetian',208.5],['Late Triassic','Norian',227],['Late Triassic','Carnian',237],['Middle Triassic','Ladinian',242],['Middle Triassic','Anisian',247.2],['Early Triassic','Olenekian',251.2],['Early Triassic','Induan',251.9],
+ ['Lopingian','Changhsingian',254.14],['Lopingian','Wuchiapingian',259.51],['Guadalupian','Capitanian',264.28],['Guadalupian','Wordian',266.9],['Guadalupian','Roadian',273.01],['Cisuralian','Kungurian',283.5],['Cisuralian','Artinskian',290.1],['Cisuralian','Sakmarian',293.52],['Cisuralian','Asselian',298.9],
+ ['Pennsylvanian','Gzhelian',303.7],['Pennsylvanian','Kasimovian',307.0],['Pennsylvanian','Moscovian',315.2],['Pennsylvanian','Bashkirian',323.2],['Mississippian','Serpukhovian',330.9],['Mississippian','Visean',346.7],['Mississippian','Tournaisian',358.9],
+ ['Late Devonian','Famennian',372.2],['Late Devonian','Frasnian',382.7],['Middle Devonian','Givetian',387.7],['Middle Devonian','Eifelian',393.3],['Early Devonian','Emsian',407.6],['Early Devonian','Pragian',410.8],['Early Devonian','Lochkovian',419.2],
+ ['Pridoli','Pridoli',423.0],['Ludlow','Ludfordian',425.6],['Ludlow','Gorstian',427.4],['Wenlock','Homerian',430.5],['Wenlock','Sheinwoodian',433.4],['Llandovery','Telychian',438.5],['Llandovery','Aeronian',440.8],['Llandovery','Rhuddanian',443.8],
+ ['Late Ordovician','Hirnantian',445.2],['Late Ordovician','Katian',453.0],['Late Ordovician','Sandbian',458.4],['Middle Ordovician','Darriwilian',467.3],['Middle Ordovician','Dapingian',470.0],['Early Ordovician','Floian',477.7],['Early Ordovician','Tremadocian',485.4],
+ ['Furongian','Stage 10',489.5],['Furongian','Jiangshanian',494],['Furongian','Paibian',497],['Miaolingian','Guzhangian',500.5],['Miaolingian','Drumian',504.5],['Miaolingian','Wuliuan',509],['Cambrian Series 2','Stage 4',514],['Cambrian Series 2','Stage 3',521],['Terreneuvian','Stage 2',529],['Terreneuvian','Fortunian',538.8],
+];
+const JUMPS = [
+  ['Cambrian seas', 512], ['Age of fishes', 385], ['Coal forests', 310], ['Dimetrodon', 285],
+  ['First dinosaurs', 228], ['Morrison Jurassic', 151], ['Last dinosaurs', 68], ['Rise of mammals', 40], ['Ice Age', 1],
+];
+const DINOPICS = new Set(['Dinosaurs']);
+const DINOPICS_UNITS = new Set(['pteranodon','pterosaurs','plesiosaurs','ichthyosaurs','mosasaurs','dimetrodon']);
+const MAXMA = 541;
+
+const $ = s => document.querySelector(s);
+const canvas = $('#map'), ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+const WORLD = 1000; // world px across 360°
+const proj = d3.geoMercator().scale(WORLD / (2 * Math.PI)).translate([0, 0]).precision(0.2);
+let tform = d3.zoomIdentity;
+let state = { t: 150, solo: null, playing: false };
+let D, units, landPath, gratPath, iconCanvas = {}, iconURL = {};
+let REC = {}; // typed arrays
+let ranges = [];
+let drawn = [], cellsLast = new Map();
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function isDark() { return css('color-scheme').includes('dark') || css('--halo') === '#0c171b'; }
+
+function hexToHsl(h) {
+  const n = parseInt(h.slice(1), 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let hh = 0, s = 0, l = (mx + mn) / 2;
+  if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    hh = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; hh /= 6; }
+  return [hh * 360, s * 100, l * 100];
+}
+function unitColor(u) {
+  if (!isDark()) return u.color;
+  const [h, s, l] = hexToHsl(u.color);
+  return `hsl(${h} ${Math.min(80, s * 1.05)}% ${Math.max(l + 22, 64)}%)`;
+}
+
+function buildIcons() {
+  const halo = css('--halo');
+  const S = 96;
+  for (const u of units) {
+    const c = document.createElement('canvas'); c.width = c.height = S;
+    const g = c.getContext('2d');
+    const p = new Path2D(ICONS[u.icon]);
+    const sc = S * 0.84 / 512, off = S * 0.08;
+    g.setTransform(sc, 0, 0, sc, off, off);
+    g.lineJoin = 'round'; g.lineWidth = 46; g.strokeStyle = halo; g.stroke(p); g.fillStyle = halo; g.fill(p);
+    g.fillStyle = unitColor(u); g.fill(p);
+    iconCanvas[u.id] = c; iconURL[u.id] = c.toDataURL();
+  }
+  document.querySelectorAll('img[data-u]').forEach(im => im.src = iconURL[im.dataset.u]);
+}
+
+function b64(s, T) { const bin = atob(s); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new T(u8.buffer); }
+
+async function load() {
+  const [data, land] = await Promise.all([fetch('fossils.json').then(r => r.json()), fetch('land.json').then(r => r.json())]);
+  D = data; units = D.units;
+  const c = D.cols;
+  REC.unit = b64(c.unit, Uint8Array); REC.lng = b64(c.lng, Int16Array); REC.lat = b64(c.lat, Int16Array);
+  REC.mx = b64(c.mx, Uint16Array); REC.mn = b64(c.mn, Uint16Array); REC.g = b64(c.g, Uint16Array); REC.n = b64(c.n, Uint16Array);
+  const N = D.n; REC.x = new Float32Array(N); REC.y = new Float32Array(N); REC.lo = new Float32Array(N); REC.hi = new Float32Array(N); REC.span = new Float32Array(N);
+  ranges = units.map(() => [0, 0]);
+  for (let i = 0; i < N; i++) {
+    const p = proj([REC.lng[i] / 2, Math.max(-84, Math.min(84, REC.lat[i] / 2))]);
+    REC.x[i] = p[0]; REC.y[i] = p[1];
+    REC.hi[i] = REC.mx[i] / 10; REC.lo[i] = REC.mn[i] / 10; REC.span[i] = Math.max(REC.hi[i] - REC.lo[i], 0.1);
+    const u = REC.unit[i]; if (i === 0 || REC.unit[i - 1] !== u) ranges[u][0] = i; ranges[u][1] = i + 1;
+  }
+  units.forEach((u, i) => { u.idx = i; u.visible = !!u.on; const m = Math.max(...u.series); u.max = m || 1; });
+  const landF = topojson.feature(land, land.objects.land);
+  landPath = new Path2D(d3.geoPath(proj)(landF));
+  gratPath = new Path2D(d3.geoPath(proj)(d3.geoGraticule().step([30, 30]).extent([[-180, -80], [180, 80.01]])()));
+  $('#about-count').textContent = `${D.occurrences.toLocaleString()} fossil occurrences in ${units.length} groups.`;
+  buildLegend(); buildIcons(); buildJumps();
+  resize(); setupZoom();
+  $('#loading').hidden = true;
+  setTime(150);
+}
+
+/* ------------------------------------------------------------ legend */
+function buildLegend() {
+  const box = $('#units'); box.innerHTML = '';
+  const secs = [...new Set(units.map(u => u.section))];
+  for (const s of secs) {
+    const sec = document.createElement('div'); sec.className = 'sec';
+    const id = 'sec-' + s.replace(/\W+/g, '');
+    sec.innerHTML = `<label class="sec-head"><input type="checkbox" id="${id}">${s}</label>`;
+    box.appendChild(sec);
+    for (const u of units.filter(u => u.section === s)) {
+      const r = document.createElement('div'); r.className = 'row'; r.dataset.u = u.id;
+      r.innerHTML = `<input type="checkbox" id="cb-${u.id}" aria-label="Show ${u.label}">
+        <img data-u="${u.id}" alt="">
+        <button class="name" title="${u.label}: ${u.total.toLocaleString()} occurrences">${u.kind === 'genus' ? '<i>' + u.label.replace(' & ', '</i> & <i>') + '</i>' : u.label}</button>
+        <canvas width="128" height="36" aria-hidden="true"></canvas>`;
+      sec.appendChild(r);
+      u.row = r; u.spark = r.querySelector('canvas'); u.cb = r.querySelector('input');
+      u.cb.checked = u.visible;
+      u.cb.addEventListener('change', () => { u.visible = u.cb.checked; if (state.solo && state.solo !== u.id && u.visible) state.solo = null; syncLegend(); render(); drawTimeline(); });
+      r.querySelector('button').addEventListener('click', () => { state.solo = state.solo === u.id ? null : u.id; if (state.solo) { u.visible = true; } syncLegend(); render(); drawTimeline(); });
+    }
+    const scb = sec.querySelector('input');
+    scb.addEventListener('change', () => { units.filter(u => u.section === s).forEach(u => u.visible = scb.checked); state.solo = null; syncLegend(); render(); drawTimeline(); });
+  }
+  syncLegend();
+}
+function syncLegend() {
+  for (const u of units) { u.cb.checked = u.visible; u.row.classList.toggle('solo', state.solo === u.id); u.row.classList.toggle('off', !isShown(u)); }
+  const secs = [...new Set(units.map(u => u.section))];
+  for (const s of secs) {
+    const us = units.filter(u => u.section === s), on = us.filter(u => u.visible).length;
+    const cb = document.getElementById('sec-' + s.replace(/\W+/g, ''));
+    cb.checked = on === us.length; cb.indeterminate = on > 0 && on < us.length;
+  }
+}
+const isShown = u => state.solo ? u.id === state.solo : u.visible;
+
+function seriesAt(u, t) { const i = Math.floor(t), f = t - i; const a = u.series[i] || 0, b = u.series[Math.min(541, i + 1)] || 0; return a + (b - a) * f; }
+
+function drawSparks() {
+  const acc = css('--accent'), mut = css('--line');
+  for (const u of units) {
+    const c = u.spark, g = c.getContext('2d'), w = c.width, h = c.height;
+    g.clearRect(0, 0, w, h);
+    const col = unitColor(u);
+    g.beginPath(); g.moveTo(0, h);
+    for (let x = 0; x <= w; x++) { const t = MAXMA - x / w * MAXMA; const v = Math.sqrt(seriesAt(u, t) / u.max); g.lineTo(x, h - 2 - v * (h - 5)); }
+    g.lineTo(w, h); g.closePath(); g.fillStyle = col; g.globalAlpha = .55; g.fill(); g.globalAlpha = 1;
+    const cx = (MAXMA - state.t) / MAXMA * w; g.fillStyle = acc; g.fillRect(cx - 1, 0, 2, h);
+    u.row.classList.toggle('absent', seriesAt(u, state.t) < 0.05);
+  }
+}
+
+/* ------------------------------------------------------------ map */
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  const tl = $('#tl-canvas'); tl.width = tl.clientWidth * DPR; tl.height = tl.clientHeight * DPR;
+  drawTimeline(); render();
+}
+let zoom;
+function fitTransform() {
+  // fit 168°W..190°E and 72°N..58°S into the free area
+  const narrow = W < 760;
+  const top = narrow ? 120 : 20, bottom = narrow ? 175 : 140, right = narrow ? 0 : 330;
+  const x0 = proj([-170, 0])[0], x1 = WORLD / 2, y0 = proj([0, 74])[1], y1 = proj([0, -56])[1];
+  const k = Math.min((W - right) / (x1 - x0), (H - top - bottom) / (y1 - y0));
+  const tx = ((W - right) - k * (x0 + x1)) / 2, ty = top + ((H - top - bottom) - k * (y0 + y1)) / 2;
+  return d3.zoomIdentity.translate(tx, ty).scale(k);
+}
+function setupZoom() {
+  const f = fitTransform();
+  const [, yN] = proj([0, 84]), [, yS] = proj([0, -84]);
+  zoom = d3.zoom().scaleExtent([f.k * 0.7, f.k * 60])
+    .translateExtent([[-WORLD * 0.75, yN - 40], [WORLD * 0.75, yS + 40]])
+    .filter(e => !e.button && !(e.type === 'dblclick' && false))
+    .on('start', () => canvas.classList.add('dragging'))
+    .on('end', () => canvas.classList.remove('dragging'))
+    .on('zoom', e => { tform = e.transform; hidePop(); render(); });
+  d3.select(canvas).call(zoom).call(zoom.transform, f);
+  $('#zin').onclick = () => d3.select(canvas).transition().duration(250).call(zoom.scaleBy, 1.6);
+  $('#zout').onclick = () => d3.select(canvas).transition().duration(250).call(zoom.scaleBy, 1 / 1.6);
+}
+
+let raf = 0;
+function render() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
+
+const CELL = 42;
+function draw() {
+  if (!D) return;
+  const k = tform.k, tx = tform.x, ty = tform.y, t = state.t, Hw = D.H;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = css('--ocean'); ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(DPR * k, 0, 0, DPR * k, DPR * tx, DPR * ty);
+  ctx.strokeStyle = css('--grat'); ctx.lineWidth = 1 / k; ctx.stroke(gratPath);
+  ctx.fillStyle = css('--land'); ctx.fill(landPath);
+  ctx.strokeStyle = css('--coast'); ctx.lineWidth = 0.7 / k; ctx.stroke(landPath);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  // aggregate visible records into screen cells
+  const cellDeg = CELL / (k * WORLD / 360);
+  const fScale = Math.min(30, Math.max(0.12, Math.pow(cellDeg / 5, 0.7)));
+  const cells = new Map();
+  const lo = t - Hw, hi = t + Hw, M = 40;
+  let shownTotal = 0, groupsShown = 0;
+  for (const u of units) {
+    if (!isShown(u)) continue;
+    const sv = seriesAt(u, t); if (sv < 0.05) continue;
+    shownTotal += sv; groupsShown++;
+    const [a, b] = ranges[u.idx];
+    const ucells = new Map();
+    for (let i = a; i < b; i++) {
+      if (REC.hi[i] < lo || REC.lo[i] > hi) continue;
+      const sx = REC.x[i] * k + tx; if (sx < -M || sx > W + M) continue;
+      const sy = REC.y[i] * k + ty; if (sy < -M || sy > H + M) continue;
+      const ov = Math.min(REC.hi[i], hi) - Math.max(REC.lo[i], lo);
+      const e = REC.n[i] * Math.min(ov / REC.span[i], 1);
+      if (e <= 0) continue;
+      const key = (Math.floor(sy / CELL) + 10) * 10000 + Math.floor(sx / CELL) + 10;
+      let c = ucells.get(key); if (!c) { c = [0, 0, 0]; ucells.set(key, c); }
+      c[0] += e; c[1] += e * sx; c[2] += e * sy;
+    }
+    const peak = u.peak * fScale;
+    for (const [key, c] of ucells) {
+      const rel = Math.min(1, c[0] / peak);
+      let cell = cells.get(key); if (!cell) { cell = []; cells.set(key, cell); }
+      cell.push({ u, e: c[0], rel, x: c[1] / c[0], y: c[2] / c[0], pri: rel * (u.kind === 'genus' ? 2.2 : 1) + (state.solo ? 1 : 0) });
+    }
+  }
+  // choose icons per cell
+  const items = [];
+  const slots = [[0, 0], [0.62, -0.42], [-0.62, 0.42], [0.62, 0.48]];
+  const perCell = k > 25 ? 4 : 3;
+  for (const [key, list] of cells) {
+    list.sort((p, q) => q.pri - p.pri);
+    const top = list.filter(o => o.rel > 0.015).slice(0, perCell);
+    if (!top.length) continue;
+    const ax = top[0].x, ay = top[0].y;
+    const s0 = 14 + 28 * Math.sqrt(top[0].rel);
+    top.forEach((o, j) => {
+      const s = 14 + 28 * Math.sqrt(o.rel);
+      const [dx, dy] = slots[j];
+      const x = j === 0 ? ax : ax + dx * (s0 + s) * 0.55, y = j === 0 ? ay : ay + dy * (s0 + s) * 0.55;
+      items.push({ o, x, y, s, a: 0.4 + 0.6 * Math.sqrt(o.rel), key, more: j === top.length - 1 ? list.length - top.length : 0 });
+    });
+  }
+  items.sort((p, q) => p.s - q.s);
+  for (const it of items) {
+    ctx.globalAlpha = it.a;
+    ctx.drawImage(iconCanvas[it.o.u.id], it.x - it.s / 2, it.y - it.s / 2, it.s, it.s);
+  }
+  ctx.globalAlpha = 1;
+  drawn = items; cellsLast = cells;
+  $('#stats').textContent = groupsShown ? `≈${Math.round(shownTotal).toLocaleString()} fossil records from ${groupsShown} group${groupsShown > 1 ? 's' : ''} in this 5-Myr window` : 'No fossils from the selected groups at this time';
+}
+
+/* ------------------------------------------------------------ popup */
+const pop = $('#pop');
+function hidePop() { pop.hidden = true; }
+function fmt(v) { return v >= 10 ? Math.round(v).toLocaleString() : v >= 1 ? v.toFixed(1) : v.toFixed(2); }
+canvas.addEventListener('click', ev => {
+  if (ev.defaultPrevented) return;
+  const r = canvas.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  let hit = null;
+  for (let i = drawn.length - 1; i >= 0; i--) { const it = drawn[i]; if (Math.abs(mx - it.x) < it.s / 2 + 2 && Math.abs(my - it.y) < it.s / 2 + 2) { hit = it; break; } }
+  if (!hit) { hidePop(); return; }
+  showPop(hit, mx, my);
+});
+function showPop(hit, mx, my) {
+  const list = cellsLast.get(hit.key) || [];
+  const k = tform.k, tx = tform.x, ty = tform.y, t = state.t, lo = t - D.H, hi = t + D.H;
+  const cy = Math.floor(hit.key / 10000) - 10, cx = hit.key % 10000 - 10;
+  const sorted = [...list].sort((p, q) => (q.u === hit.o.u) - (p.u === hit.o.u) || q.e - p.e).slice(0, 8);
+  let html = `<button class="close" aria-label="Close">×</button><h3>Fossils here</h3><div class="sub">${t.toFixed(1)} Ma ± 2.5 Myr · present-day location</div>`;
+  for (const o of sorted) {
+    const u = o.u, [a, b] = ranges[u.idx], gen = new Map();
+    for (let i = a; i < b; i++) {
+      if (REC.hi[i] < lo || REC.lo[i] > hi) continue;
+      const sx = REC.x[i] * k + tx, sy = REC.y[i] * k + ty;
+      if (Math.floor(sx / CELL) !== cx || Math.floor(sy / CELL) !== cy) continue;
+      const ov = Math.min(REC.hi[i], hi) - Math.max(REC.lo[i], lo);
+      const e = REC.n[i] * Math.min(ov / REC.span[i], 1); if (e <= 0) continue;
+      gen.set(REC.g[i], (gen.get(REC.g[i]) || 0) + e);
+    }
+    const tops = [...gen].filter(([g]) => g > 0).sort((p, q) => q[1] - p[1]).slice(0, 5);
+    const linkDP = DINOPICS.has(u.section) || DINOPICS_UNITS.has(u.id);
+    const gl = tops.map(([g]) => {
+      const name = D.genera[g];
+      const href = linkDP ? `https://dinosaurpictures.org/${encodeURIComponent(name)}-pictures` : `https://paleobiodb.org/classic/checkTaxonInfo?taxon_name=${encodeURIComponent(name)}`;
+      return `<a href="${href}" target="_blank" rel="noopener"><i>${name}</i></a>`;
+    }).join(', ');
+    html += `<div class="grp"><img src="${iconURL[u.id]}" alt=""><div><b>${u.label}</b></div><div class="n">≈${fmt(o.e)}</div>${gl ? `<div class="gen">${gl}${linkDP ? '' : ' <span class="pb">PBDB</span>'}</div>` : ''}</div>`;
+  }
+  if (list.length > sorted.length) html += `<div class="sub" style="margin:6px 0 0">and ${list.length - sorted.length} more groups. Zoom in to separate them.</div>`;
+  pop.innerHTML = html; pop.hidden = false;
+  pop.querySelector('.close').onclick = hidePop;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let x = mx + 14, y = my - 20;
+  if (x + pw > W - 16) x = mx - pw - 14; if (x < 16) x = 16;
+  if (y + ph > H - 150) y = H - 150 - ph; if (y < 16) y = 16;
+  pop.style.left = x + 'px'; pop.style.top = y + 'px';
+}
+
+/* ------------------------------------------------------------ timeline */
+const tl = $('#tl-canvas'), tg = tl.getContext('2d');
+function drawTimeline() {
+  if (!D) return;
+  const w = tl.width, h = tl.height, d = DPR;
+  tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, w, h);
+  const X = t => (MAXMA - t) / MAXMA * w;
+  const bandH = 16 * d, curveTop = bandH + 3 * d, axisH = 13 * d, curveH = h - curveTop - axisH;
+  // periods
+  let prev = 0;
+  tg.font = `500 ${10.5 * d}px "IBM Plex Sans", sans-serif`; tg.textBaseline = 'middle';
+  for (const [name, base, col] of PERIODS) {
+    const x0 = X(base), x1 = X(prev);
+    tg.fillStyle = col; tg.fillRect(x0, 0, x1 - x0, bandH);
+    const label = (x1 - x0) > tg.measureText(name).width + 8 * d ? name : (x1 - x0) > 14 * d ? name.slice(0, 1) : '';
+    const [, , L] = hexToHsl(col); tg.fillStyle = L < 45 ? '#ffffff' : '#1b2a2e'; tg.textAlign = 'center'; if (label) tg.fillText(label, (x0 + x1) / 2, bandH / 2 + d * .5);
+    prev = base;
+  }
+  // abundance curve of shown groups
+  const shown = units.filter(isShown);
+  const vals = new Float32Array(Math.ceil(w) + 1);
+  let mx = 0;
+  for (let x = 0; x <= w; x++) { const t = MAXMA - x / w * MAXMA; let s = 0; for (const u of shown) s += seriesAt(u, t) / (state.solo ? 1 : u.max); vals[x] = s; if (s > mx) mx = s; }
+  tg.beginPath(); tg.moveTo(0, curveTop + curveH);
+  for (let x = 0; x <= w; x++) tg.lineTo(x, curveTop + curveH - (mx ? Math.sqrt(vals[x] / mx) : 0) * curveH);
+  tg.lineTo(w, curveTop + curveH); tg.closePath();
+  const solo = state.solo && units.find(u => u.id === state.solo);
+  tg.fillStyle = solo ? unitColor(solo) : css('--muted'); tg.globalAlpha = .38; tg.fill(); tg.globalAlpha = 1;
+  // axis
+  tg.fillStyle = css('--muted'); tg.font = `400 ${10 * d}px "IBM Plex Mono", monospace`; tg.textBaseline = 'alphabetic';
+  const step = w / d < 520 ? 100 : 50;
+  for (let t = 500; t >= 0; t -= step) { const x = X(t); tg.fillRect(x, curveTop + curveH, d, 3 * d); tg.textAlign = t === 0 ? 'right' : 'center'; tg.fillText(t === 0 ? 'now' : t, Math.min(x, w - d), h - 1 * d); }
+  // cursor
+  const cx = X(state.t);
+  tg.fillStyle = css('--accent'); tg.fillRect(cx - 1.5 * d, 0, 3 * d, curveTop + curveH);
+  tg.beginPath(); tg.arc(cx, bandH + 1 * d, 6 * d, 0, Math.PI * 2); tg.fill();
+  tg.strokeStyle = css('--panel-solid'); tg.lineWidth = 2 * d; tg.stroke();
+  $('#curve-label').textContent = solo ? `Curve: ${solo.label} through time` : 'Curve: shown groups through time';
+}
+
+function intervalAt(t) {
+  let st = STAGES[STAGES.length - 1]; for (const s of STAGES) { if (t <= s[2]) { st = s; break; } }
+  let pe = PERIODS[PERIODS.length - 1]; for (const p of PERIODS) { if (t <= p[1]) { pe = p; break; } }
+  return { stage: st[1], epoch: st[0], period: pe[0], color: pe[2] };
+}
+function setTime(t, fromInput) {
+  state.t = Math.max(0, Math.min(MAXMA, t));
+  if (!fromInput) $('#time').value = MAXMA - state.t;
+  const iv = intervalAt(state.t);
+  const tt = state.t < 10 ? state.t.toFixed(1) : Math.round(state.t);
+  $('#ma').innerHTML = `${tt}<small>million years ago</small>`;
+  const ep = iv.epoch === iv.stage ? iv.epoch : `${iv.epoch} · ${iv.stage}`;
+  $('#interval').innerHTML = `<span class="chip" style="background:${iv.color}"></span>${iv.period} · ${ep}`;
+  $('#time').setAttribute('aria-valuetext', `${tt} million years ago, ${iv.period}`);
+  hidePop(); render(); drawTimeline(); drawSparks();
+}
+$('#time').addEventListener('input', e => setTime(MAXMA - +e.target.value, true));
+
+function buildJumps() {
+  const box = $('#jumps');
+  for (const [label, t] of JUMPS) { const b = document.createElement('button'); b.textContent = label; b.onclick = () => { stop(); setTime(t); }; box.appendChild(b); }
+}
+
+/* play */
+let last = 0, playRaf = 0;
+function stop() { state.playing = false; cancelAnimationFrame(playRaf); $('#play').textContent = '▶ Play'; }
+function step(ts) {
+  if (!state.playing) return;
+  const dt = last ? (ts - last) / 1000 : 0; last = ts;
+  const sp = +$('#speed').value;
+  const nt = state.t - sp * dt;
+  if (nt <= 0) { setTime(0); stop(); return; }
+  setTime(nt); playRaf = requestAnimationFrame(step);
+}
+$('#play').onclick = () => {
+  if (state.playing) return stop();
+  if (state.t <= 0.5) setTime(MAXMA);
+  state.playing = true; last = 0; $('#play').textContent = '❚❚ Pause'; playRaf = requestAnimationFrame(step);
+};
+
+/* misc UI */
+$('#all-on').onclick = () => { const anyOff = units.some(u => !u.visible); units.forEach(u => u.visible = anyOff); state.solo = null; $('#all-on').textContent = anyOff ? 'None' : 'All'; syncLegend(); render(); drawTimeline(); };
+$('#about-btn').onclick = () => { $('#about').hidden = false; };
+$('#about-close').onclick = () => { $('#about').hidden = true; };
+$('#legend-toggle').onclick = () => { const l = $('#legend'); const o = l.classList.toggle('open'); $('#legend-toggle').setAttribute('aria-expanded', o); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { hidePop(); $('#about').hidden = true; }
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'ArrowLeft') setTime(state.t + (e.shiftKey ? 10 : 1));
+  if (e.key === 'ArrowRight') setTime(state.t - (e.shiftKey ? 10 : 1));
+  if (e.key === ' ') { e.preventDefault(); $('#play').click(); }
+});
+window.addEventListener('resize', resize);
+const retheme = () => { if (!D) return; buildIcons(); render(); drawTimeline(); drawSparks(); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', retheme);
+new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+load().catch(err => { $('#loading').textContent = 'The fossil data could not be loaded. Reload the page to try again.'; console.error(err); });
+</script>

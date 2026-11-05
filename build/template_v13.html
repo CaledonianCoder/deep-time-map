@@ -1,0 +1,1564 @@
+<title>Deep Time Atlas v13</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-bleed map canvas; floating time readout top-left, animal legend docked right, geologic timeline docked along the bottom. */
+:root {
+  --ocean: #c7d6da;
+  --land: #e8ebe2;
+  --coast: #98aaa7;
+  --grat: rgba(40, 70, 80, .08);
+  --ink: #1b2a2e;
+  --muted: #586a6d;
+  --panel: rgba(247, 249, 247, .52);
+  --panel-hover: rgba(247, 249, 247, .9);
+  --panel-line: rgba(120, 140, 140, .28);
+  --panel-solid: #f7f9f7;
+  --line: #c3cfcd;
+  --accent: #17656e;
+  --danger: #a3302a;
+  --halo: #f8faf6;
+  --shadow: 0 6px 24px rgba(20, 40, 45, .14);
+  --f-display: "Gloock", "Iowan Old Style", Georgia, serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ocean: #0c171b; --land: #232e2c; --coast: #3b4c49; --grat: rgba(170, 210, 210, .06);
+    --ink: #e2eae7; --muted: #92a3a0; --panel: rgba(16, 26, 29, .5); --panel-hover: rgba(16, 26, 29, .9); --panel-line: rgba(160, 190, 190, .18); --panel-solid: #101a1d;
+    --line: #2e3d3e; --accent: #5cc3c4; --danger: #f07a6e; --halo: #0c171b; --shadow: 0 6px 24px rgba(0,0,0,.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ocean: #0c171b; --land: #232e2c; --coast: #3b4c49; --grat: rgba(170, 210, 210, .06);
+  --ink: #e2eae7; --muted: #92a3a0; --panel: rgba(16, 26, 29, .5); --panel-hover: rgba(16, 26, 29, .9); --panel-line: rgba(160, 190, 190, .18); --panel-solid: #101a1d;
+  --line: #2e3d3e; --accent: #5cc3c4; --danger: #f07a6e; --halo: #0c171b; --shadow: 0 6px 24px rgba(0,0,0,.45);
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--ocean); color: var(--ink); font: 14px/1.45 var(--f-body); overflow: hidden; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#app { position: relative; height: 100%; width: 100%; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#map.dragging { cursor: grabbing; }
+
+.panel { background: var(--panel); border: 1px solid var(--panel-line); box-shadow: 0 2px 10px rgba(20, 40, 45, .08); backdrop-filter: blur(3px) saturate(1.1); -webkit-backdrop-filter: blur(3px) saturate(1.1); transition: background-color .2s ease, box-shadow .2s ease; }
+/* see-through panels firm up while in use */
+.panel:hover, .panel:focus-within, #legend.open { background: var(--panel-hover); box-shadow: var(--shadow); }
+/* pop-ups stay solid so they read cleanly over everything */
+#tip.panel, #pop.panel, #about.panel { background: var(--panel-hover); box-shadow: var(--shadow); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+/* keep text legible over the map while panels are see-through */
+#readout, #legend, #timeline, #focus, #search { text-shadow: 0 0 3px var(--halo), 0 0 1px var(--halo); }
+#legend header, #legend .hint, #climate, .layers { border-color: var(--panel-line) !important; }
+#readout { pointer-events: auto; }
+#readout:not(:hover) #climate .r, #readout:not(:hover) #stats { opacity: .85; }
+
+/* time readout */
+#search { position: absolute; z-index: 4; top: 14px; left: 50%; transform: translateX(-50%); width: min(360px, calc(100% - 32px)); border-radius: 999px; display: flex; align-items: center; gap: 8px; padding: 0 14px; height: 40px; }
+#search svg { width: 16px; height: 16px; color: var(--muted); flex: none; }
+#q { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 14px; outline: none; height: 100%; }
+#q::placeholder { color: var(--muted); }
+#search:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+#q-list { position: absolute; top: 46px; left: 0; right: 0; margin: 0; padding: 4px; list-style: none; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); max-height: 320px; overflow-y: auto; }
+#q-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+#q-list li img { width: 20px; height: 20px; flex: none; }
+#q-list li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#q-list li .meta { color: var(--muted); font: 400 11px var(--f-mono); white-space: nowrap; }
+#q-list li[aria-selected="true"], #q-list li:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+#q-list .empty { color: var(--muted); cursor: default; }
+#focus { position: absolute; z-index: 3; top: 62px; left: 50%; transform: translateX(-50%); width: min(360px, calc(100% - 32px)); border-radius: 10px; padding: 10px 14px 10px; font-size: 12.5px; }
+#focus h3 { font: 400 20px/1.15 var(--f-display); margin: 0 26px 2px 0; display: flex; align-items: center; gap: 8px; }
+#focus h3 img { width: 24px; height: 24px; }
+#focus .sub { color: var(--muted); }
+#focus .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 6px 0; font-variant-numeric: tabular-nums; }
+#focus .facts dt { color: var(--muted); }
+#focus .facts dd { margin: 0; }
+#focus .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+#focus .acts a, #focus .acts button { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; background: transparent; color: var(--ink); text-decoration: none; cursor: pointer; }
+#focus .acts a:hover, #focus .acts button:hover { border-color: var(--accent); color: var(--accent); }
+#focus .close { position: absolute; top: 6px; right: 6px; border: 0; background: none; font-size: 18px; color: var(--muted); cursor: pointer; padding: 4px 6px; }
+@media (max-width: 1180px) and (min-width: 761px) { #search, #focus { left: calc(max(16px, env(safe-area-inset-left, 0px)) + 380px); transform: none; width: min(300px, calc(100% - 740px)); } }
+#readout { position: absolute; top: 14px; left: max(16px, env(safe-area-inset-left, 0px)); padding: 12px 16px 12px; border-radius: 10px; max-width: min(360px, calc(100% - 32px)); }
+#readout .brand { font: 600 11px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+#ma { font: 400 44px/1.05 var(--f-display); margin-top: 6px; font-variant-numeric: tabular-nums; }
+#ma small { font: 500 15px var(--f-mono); color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+#interval { font-weight: 600; margin-top: 2px; }
+#interval .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.15); }
+#stats { color: var(--muted); font-size: 12.5px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+/* legend */
+#legend { position: absolute; top: 14px; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 212px; width: 300px; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+#legend header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px 8px; border-bottom: 1px solid var(--line); }
+#legend h2 { font: 400 19px/1.2 var(--f-display); margin: 0; }
+#legend .hint { font-size: 12px; color: var(--muted); padding: 6px 14px 8px; border-bottom: 1px solid var(--line); }
+#units { overflow-y: auto; padding: 4px 0 10px; flex: 1; min-height: 0; }
+.sec { margin-top: 6px; }
+.sec-head { display: flex; align-items: center; gap: 8px; padding: 6px 14px 4px; font: 600 11px/1 var(--f-body); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.sec-head input { margin: 0; }
+.row { display: grid; grid-template-columns: 18px 22px minmax(0,1fr) 64px; align-items: center; gap: 8px; padding: 3px 14px; }
+.row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.row input { margin: 0; }
+.row img { width: 22px; height: 22px; display: block; }
+.row button.name { text-align: left; background: none; border: 0; padding: 2px 0; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row button.name:hover { text-decoration: underline; text-underline-offset: 2px; }
+.row.absent .name, .row.absent img { opacity: .42; }
+.row.off .name, .row.off img, .row.off canvas { opacity: .3; }
+.row.solo { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.row.solo .name { font-weight: 600; }
+.row canvas { width: 64px; height: 18px; display: block; }
+.genus-tag { font: 500 10px var(--f-mono); color: var(--muted); margin-left: 4px; }
+
+.iconbtn { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 12.5px; }
+.iconbtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* timeline */
+#timeline { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); border-radius: 10px; padding: 10px 14px 10px; }
+#tl-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+#play { min-width: 74px; font-weight: 600; background: var(--accent); color: var(--panel-solid); border: 0; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+#speed { border: 1px solid var(--line); background: transparent; border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
+#jumps { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+#jumps button { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+#jumps button:hover { border-color: var(--accent); color: var(--accent); }
+#curve-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+#track { position: relative; height: 86px; }
+#tl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#time { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: ew-resize; }
+#time::-webkit-slider-runnable-track { height: 86px; background: transparent; }
+#time::-moz-range-track { height: 86px; background: transparent; }
+#time::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 86px; background: transparent; border: 0; }
+#time::-moz-range-thumb { width: 14px; height: 86px; background: transparent; border: 0; }
+
+/* popup */
+#pop { position: absolute; z-index: 5; width: 300px; max-width: calc(100% - 32px); border-radius: 10px; padding: 12px 14px; font-size: 13px; }
+#pop h3 { font: 400 18px/1.2 var(--f-display); margin: 0 26px 2px 0; }
+#pop .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+#pop .close { position: absolute; top: 8px; right: 8px; border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--muted); padding: 4px 6px; }
+#pop .grp { display: grid; grid-template-columns: 22px minmax(0,1fr) auto; gap: 4px 8px; align-items: start; padding: 6px 0; border-top: 1px solid var(--line); }
+#pop .grp img { width: 22px; height: 22px; }
+#pop .grp b { font-weight: 600; }
+#pop .grp .n { font: 500 12px var(--f-mono); color: var(--muted); }
+#pop .gen { grid-column: 2 / 4; font-size: 12.5px; color: var(--muted); }
+#pop .gen a { color: var(--ink); text-decoration-color: var(--line); text-underline-offset: 2px; }
+#pop .gen a:hover { color: var(--accent); }
+#pop .gen .pb { font: 500 10.5px var(--f-mono); }
+
+/* about */
+#about { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(520px, calc(100% - 32px)); max-height: calc(100% - 60px); overflow-y: auto; border-radius: 12px; padding: 20px 22px; font-size: 13.5px; }
+#about h2 { font: 400 24px/1.15 var(--f-display); margin: 0 0 8px; text-wrap: balance; }
+#about p { margin: 0 0 10px; max-width: 65ch; }
+#about a { color: var(--accent); }
+#about .close { position: absolute; top: 10px; right: 10px; }
+#zoomctl { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 222px; display: flex; flex-direction: column; gap: 6px; }
+#zoomctl button { width: 34px; height: 34px; border-radius: 8px; font-size: 18px; cursor: pointer; padding: 0; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; font: 400 22px var(--f-display); color: var(--muted); pointer-events: none; }
+#legend-toggle { display: none; }
+
+#tip { position: absolute; z-index: 7; pointer-events: none; padding: 8px 11px; border-radius: 8px; font-size: 12.5px; }
+#tip b { font-weight: 600; }
+#tip .t-sub { color: var(--muted); font-size: 11.5px; }
+#tip .t-gen { margin-top: 3px; }
+#tip .t-comp { display: flex; flex-wrap: wrap; gap: 1px 10px; margin-top: 4px; font-size: 12px; }
+#tip .t-rule { border-top: 1px solid var(--line); margin: 6px 0 5px; }
+#tip { max-width: 300px; }
+#tip .sw, #patchkey .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.layers { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 8px 14px 10px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.layers label { display: flex; align-items: center; gap: 6px; }
+.layers select { width: 100%; border: 1px solid var(--line); background: transparent; border-radius: 6px; padding: 3px 4px; font-size: 12px; }
+.layers .full { grid-column: 1 / 3; }
+.layers .lab { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+#patchkey { margin-top: 6px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 3px 10px; }
+#patchkey:empty { display: none; }
+#climate { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#climate:empty { display: none; }
+#climate .k { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+#climate .v { font-weight: 600; }
+#climate .r { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+#climate .full { grid-column: 1 / 3; }
+#climate .bar { height: 8px; border-radius: 4px; margin-top: 3px; }
+#climate .barlab { display: flex; justify-content: space-between; color: var(--muted); font: 400 10px var(--f-mono); }
+.curve-pick { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.curve-pick select { border: 1px solid var(--line); background: transparent; border-radius: 6px; padding: 3px 4px; font-size: 12px; color: var(--ink); }
+#extinction { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); max-width: 330px; }
+#extinction .ex-h { font-weight: 600; color: var(--danger); }
+#extinction .dagger { font: 400 16px var(--f-display); margin-right: 6px; }
+#extinction .ex-t { font: 500 11.5px var(--f-mono); color: var(--muted); margin: 1px 0 3px; }
+#extinction .ex-c { font-size: 12.5px; }
+#ext-row { position: relative; height: 16px; margin-bottom: 1px; }
+.ext-mark { position: absolute; top: 0; transform: translateX(-50%); border: 0; background: none; padding: 0 3px; font: 400 14px/16px var(--f-display); color: var(--danger); opacity: .55; cursor: pointer; }
+.ext-mark.big { opacity: 1; font-size: 16px; }
+.ext-mark:hover { opacity: 1; transform: translateX(-50%) scale(1.25); }
+@media (max-width: 760px) {
+  #readout { padding: 9px 12px; top: 58px; max-width: calc(100% - 32px); }
+  #search { top: 10px; left: max(16px, env(safe-area-inset-left, 0px)); transform: none; width: auto; right: calc(max(16px, env(safe-area-inset-right, 0px)) + 96px); }
+  #focus { top: 58px; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); transform: none; width: auto; z-index: 5; }
+  #ma { font-size: 32px; }
+  #ma small { display: block; margin: 2px 0 0; font-size: 12px; }
+  #legend { top: auto; bottom: 212px; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; max-height: 52%; }
+  #legend:not(.open) { display: none; }
+  #legend-toggle { display: block; position: absolute; top: 10px; right: max(16px, env(safe-area-inset-right, 0px)); border-radius: 8px; padding: 7px 11px; font-weight: 600; cursor: pointer; }
+  #jumps { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  #curve-label { display: none; }
+  #zoomctl { bottom: 236px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app">
+  <canvas id="map" aria-label="World map of fossil occurrences"></canvas>
+  <div id="loading">Unearthing 600,000 fossils…</div>
+
+  <section id="readout" class="panel" aria-live="polite">
+    <div class="brand">Deep Time Atlas</div>
+    <div id="ma">150<small>Ma</small></div>
+    <div id="interval"></div>
+    <div id="extinction" hidden></div>
+    <div id="climate" aria-label="Climate at this time"></div>
+    <div id="stats"></div>
+    <div id="patchkey"></div>
+  </section>
+
+  <div id="search" class="panel" role="search">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Find a genus, e.g. Dunkleosteus" aria-label="Find a genus or group" aria-controls="q-list" aria-expanded="false" aria-autocomplete="list">
+    <ul id="q-list" role="listbox" hidden></ul>
+  </div>
+  <section id="focus" class="panel" hidden aria-live="polite"></section>
+  <button id="legend-toggle" class="panel" aria-controls="legend" aria-expanded="false">Animals</button>
+  <aside id="legend" class="panel" aria-label="Animal groups">
+    <header>
+      <h2>Who lived here</h2>
+      <div style="display:flex;gap:6px">
+        <button class="iconbtn" id="all-on">All</button>
+        <button class="iconbtn" id="about-btn">About</button>
+      </div>
+    </header>
+    <div class="hint">Icon size follows how common a group is, relative to its own peak. Patches colour each region by its dominant group. Tick to show; tap a name to show it alone.</div>
+    <div class="layers" aria-label="Map layers">
+      <label><input type="checkbox" id="opt-patches" checked> Dominance patches</label>
+      <label><input type="checkbox" id="opt-icons" checked> Icons</label>
+      <label><input type="checkbox" id="opt-names" checked> Community names</label>
+      <label><input type="checkbox" id="opt-bounds" checked> Boundaries</label>
+      <label><input type="checkbox" id="opt-ext" checked> Mass extinctions</label>
+      <label class="full"><span class="lab" style="min-width:64px">Colour by</span>
+        <select id="opt-mode">
+          <option value="focus" selected>Each group’s heartland</option>
+          <option value="share">Most fossils nearby</option>
+        </select></label>
+      <label class="full"><span class="lab" style="min-width:64px">Compare</span>
+        <select id="opt-compare"></select></label>
+      <label><span class="lab">Spread</span>
+        <select id="opt-spread"><option value="3">Tight</option><option value="6" selected>Medium</option><option value="11">Wide</option></select></label>
+      <label><input type="checkbox" id="opt-clip" checked> Land only</label>
+      <span class="lab full" style="margin-top:4px">Climate</span>
+      <label><input type="checkbox" id="opt-ice" checked> Ice caps</label>
+      <label><input type="checkbox" id="opt-belts"> Temperature belts</label>
+    </div>
+    <div id="units"></div>
+  </aside>
+  <div id="tip" class="panel" hidden></div>
+
+  <div id="zoomctl">
+    <button class="panel" id="zin" aria-label="Zoom in">+</button>
+    <button class="panel" id="zout" aria-label="Zoom out">−</button>
+  </div>
+
+  <section id="timeline" class="panel" aria-label="Geologic time">
+    <div id="tl-top">
+      <button id="play" aria-label="Play forward through time">▶ Play</button>
+      <select id="speed" aria-label="Playback speed">
+        <option value="2">2 Myr/s</option>
+        <option value="6" selected>6 Myr/s</option>
+        <option value="15">15 Myr/s</option>
+      </select>
+      <div id="jumps"></div>
+      <label class="curve-pick"><span>Timeline shows</span>
+        <select id="curve" aria-label="What the timeline curve shows">
+          <option value="fossils" selected>Fossils of shown groups</option>
+          <option value="temp">Global temperature</option>
+          <option value="co2">CO₂</option>
+          <option value="o2">Oxygen</option>
+          <option value="ice">Ice cover</option>
+        </select></label>
+      <div id="curve-label"></div>
+    </div>
+    <div id="ext-row" aria-label="Mass extinctions"></div>
+    <div id="track">
+      <canvas id="tl-canvas"></canvas>
+      <input type="range" id="time" min="0" max="10000" step="1" value="8000" aria-label="Millions of years ago">
+    </div>
+  </section>
+
+  <div id="pop" class="panel" hidden role="dialog" aria-label="Fossils here"></div>
+
+  <div id="about" class="panel" hidden role="dialog" aria-label="About this map">
+    <button class="iconbtn close" id="about-close">Close</button>
+    <h2>About the Deep Time Atlas</h2>
+    <p>Each icon marks fossils found at that spot, plotted on today’s continents. Drag the timeline and the icons grow where a group is common in rocks of that age and shrink as it becomes rare. Sizes are relative to each group’s own peak, so a rare animal like <i>Velociraptor</i> still shows at full size where it is best known.</p>
+    <p>Coloured patches show which group dominates each region. “Most fossils nearby” colours each area by the group with the most fossil records within a few hundred kilometres. “Each group’s heartland” scales every group against its own densest region first, so heavily collected groups (turtles, theropod teeth) do not swamp rarer ones. Patches only show where fossils of that age were found, so gaps are gaps in the rock record as much as in life.</p>
+    <p>Community names follow palaeontological practice. A fauna is named after its characteristic genus, as in Lehman’s <i>Triceratops</i> and <i>Alamosaurus</i> faunas of the latest Cretaceous, the Karoo’s <i>Lystrosaurus</i> Assemblage Zone, or Ziegler’s <i>Pentamerus</i> community of Silurian seas. Here the characteristic genus is the one that is both common in the region and concentrated there rather than spread worldwide; a second genus is added only when it is nearly as characteristic and belongs to a different group. Land and sea assemblages are mapped and named separately, using the depositional environment recorded for each fossil (or the animal’s way of life where none is recorded). Marine assemblages dominated by shelly invertebrates are called communities. The second line gives the rock formation that supplies most of the fossils and the commonest environment. Form-genera of isolated teeth, footprints, eggs and dispersed spores and pollen stay on the map but are not used as names. Plant assemblages are called floras, as in the classic <i>Glossopteris</i> flora of Gondwana, and microfossil and microbial assemblages are called assemblages.</p>
+    <p><b>Climate.</b> Global mean surface temperature and CO₂ from 485 Ma to today come from PhanDA, a data-assimilation reconstruction that combines 150,000 fossil and chemical temperature measurements with climate-model runs (<a href="https://github.com/EJJudd/PhanDA" target="_blank" rel="noopener">Judd et al. 2024, <i>Science</i></a>); the readout gives the median and the 5–95% range. Air temperature by latitude is PhanDA’s reconstructed gradient for each stage; sea-surface temperature by latitude is PhanDA’s gradient for the closest “climate state” (coldhouse to hothouse). Oxygen from 550 Ma, and CO₂ before 485 Ma, come from the GEOCARBSULFOR carbon–sulfur cycle model (<a href="https://github.com/Alexjkrause/GEOCARBSULFOR" target="_blank" rel="noopener">Krause et al. 2018; 2022 Monte Carlo runs</a>); its very high Permian oxygen (about 35%) is at the top of published estimates, and charcoal records suggest closer to 25–30%. Ice caps are drawn poleward of the latitude where mean annual air temperature falls below −10 °C, plus dated glaciations and “snowball Earth” events before the Phanerozoic. Temperature belts and ice are by latitude, because the reconstructions are by latitude; with today’s continent positions they show the climate zones of the time, not where each landmass then sat. Before 485 Ma no temperature is shown, and Precambrian oxygen and CO₂ are rough ranges only (after Catling &amp; Zahnle 2020 and Lyons et al. 2014), shown as bands.</p>
+    <p><b>Dinosaur groups.</b> Dinosaurs are grouped by clade using the Paleobiology Database’s classification: diplodocoids; brachiosaurs, camarasaurs and titanosaurs (macronarians); early sauropodomorphs; stegosaurs; ankylosaurs; ceratosaurs and abelisaurs; allosaurs, megalosaurs and spinosaurs; tyrannosaurs; raptors (dromaeosaurs and troodontids); ostrich mimics, oviraptors and other feathered theropods; ceratopsians; pachycephalosaurs; hadrosaurs; and iguanodonts with other small ornithischians. Teeth, eggs and footprints are kept and go to the most specific group their name allows: a dromaeosaur tooth to the raptors, a hadrosaur egg to the hadrosaurs. Fossils that can only be placed as “theropod”, such as the common Triassic and Jurassic footprints <i>Grallator</i> and <i>Eubrontes</i>, go to “Other theropods & theropod tracks”, and those that cannot be placed at all to “Earliest &amp; unplaced dinosaurs”.</p>
+    <p><b>Showing one group.</b> Tapping a group’s name in the panel, or finding a genus, shows that group alone: its icons, patches and community names, and nothing else. Tap the name again, or close the genus card, to bring the other groups back.</p>
+    <p><b>Search.</b> Type a genus (or a group) in the search box, or press “/”. The map jumps to the genus’s peak in the fossil record, the 5-million-year window with the most records, and zooms to its heartland, the densest cluster of finds at that time. Rings mark its fossils: solid rings are in the current time window, faint dots are from other times. Its record is drawn on the timeline. A link such as <code>#Dunkleosteus</code> on the page address opens straight to that genus.</p>
+    <p>Daggers (†) on the timeline mark mass extinctions; the five largest are drawn bold. Near each one the map shows its probable cause, such as the Chicxulub impact site or the Siberian Traps (plotted at present-day positions). Species-loss figures for the Big Five are estimates from Barnosky et al. (2011).</p>
+    <p>The timeline reaches back 4,000 million years. The Precambrian is compressed: 4,000–1,000 Ma and 1,000–541 Ma each take a tenth of the slider, marked by dashed lines. The Precambrian record is thin and patchy, so the time window widens there, to 20 million years for the Neoproterozoic and 50 million years before that, and playback speeds up. Precambrian stromatolites come from stromatolite-bearing rock units in Macrostrat (mostly North America), plus the PaleoReefs database; other Precambrian fossils come from the Paleobiology Database. Continents stay in their present positions throughout, so the oldest records sit far from where they formed.</p>
+    <p>In the Phanerozoic the time window is 5 million years wide. A fossil dated only loosely (for example “Late Cretaceous”, 34 million years) is spread across its whole range, so it counts for less at any one moment than a precisely dated find.</p>
+    <p>Climate data: PhanDA (Apache 2.0) and GEOCARBSULFOR outputs, both from their authors’ public GitHub repositories. Fossil occurrences come from the <a href="https://paleobiodb.org" target="_blank" rel="noopener">Paleobiology Database</a> (CC BY 4.0), via public exports in three open-source projects: <a href="https://github.com/MaxShih147/petra" target="_blank" rel="noopener">petra</a> (classified dinosaurs and birds), <a href="https://github.com/corestriker/dinotime" target="_blank" rel="noopener">dinotime</a> (reptiles) and the Heim lab’s <a href="https://github.com/naheim/PBDB_Scripts" target="_blank" rel="noopener">PBDB_Scripts</a> (about 650,000 animal occurrences across the last 540 million years). These are snapshots, so the newest finds are missing. Plants, algae, fungi, cyanobacteria and plankton (foraminifera, coccolithophores, diatoms, radiolarians, dinoflagellates, acritarchs) were downloaded from the Paleobiology Database on 4 November 2026. Stromatolites and other microbial reefs come from the PaleoReefs database (Kiessling and colleagues), as packaged in the palaeoverse R package. Stromatolites were most widespread before the Cambrian, which is earlier than this map goes. Plants and microbes are switched off by default; tick them in the panel. Dinosaur names link to their pages on <a href="https://dinosaurpictures.org" target="_blank" rel="noopener">dinosaurpictures.org</a>, which is built on the same database.</p>
+    <p>Silhouettes from <a href="https://game-icons.net" target="_blank" rel="noopener">game-icons.net</a> by Delapouite, Lorc, Caro Asercion and Faithtoken (CC BY 3.0). Coastlines from Natural Earth. Period colours follow the International Commission on Stratigraphy chart; stage ages are approximate.</p>
+    <p id="about-count"></p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+const ICONS = __ICONS__;
+
+// ICS periods: [name, base Ma, colour]
+const PERIODS = [
+  ['Quaternary', 2.58, '#F9F97F'], ['Neogene', 23.03, '#FFE619'], ['Paleogene', 66.0, '#FD9A52'],
+  ['Cretaceous', 145.0, '#7FC64E'], ['Jurassic', 201.4, '#34B2C9'], ['Triassic', 251.9, '#812B92'],
+  ['Permian', 298.9, '#F04028'], ['Carboniferous', 358.9, '#67A599'], ['Devonian', 419.2, '#CB8C37'],
+  ['Silurian', 443.8, '#B3E1B6'], ['Ordovician', 485.4, '#009270'], ['Cambrian', 538.8, '#7FA056'],
+  ['Ediacaran', 635, '#FED96A'], ['Cryogenian', 720, '#FECC5C'], ['Tonian', 1000, '#FEBF4E'],
+  ['Stenian', 1200, '#FED99A'], ['Ectasian', 1400, '#F3CC8A'], ['Calymmian', 1600, '#FDC07A'],
+  ['Statherian', 1800, '#F875A7'], ['Orosirian', 2050, '#F76898'], ['Rhyacian', 2300, '#F75B89'], ['Siderian', 2500, '#F74F7C'],
+  ['Neoarchean', 2800, '#F99BC1'], ['Mesoarchean', 3200, '#F768A9'], ['Paleoarchean', 3600, '#F4449F'], ['Eoarchean', 4031, '#DA037F'],
+];
+const PRE_ERAS = [['Neoproterozoic', 1000], ['Mesoproterozoic', 1600], ['Paleoproterozoic', 2500], ['Archean', 4031]];
+// [epoch, stage, base Ma]
+const STAGES = [
+ ['Holocene','Holocene',0.0117],['Pleistocene','Late Pleistocene',0.129],['Pleistocene','Chibanian',0.774],['Pleistocene','Calabrian',1.8],['Pleistocene','Gelasian',2.58],
+ ['Pliocene','Piacenzian',3.6],['Pliocene','Zanclean',5.333],['Miocene','Messinian',7.246],['Miocene','Tortonian',11.63],['Miocene','Serravallian',13.82],['Miocene','Langhian',15.98],['Miocene','Burdigalian',20.44],['Miocene','Aquitanian',23.03],
+ ['Oligocene','Chattian',27.82],['Oligocene','Rupelian',33.9],['Eocene','Priabonian',37.71],['Eocene','Bartonian',41.2],['Eocene','Lutetian',47.8],['Eocene','Ypresian',56.0],['Paleocene','Thanetian',59.2],['Paleocene','Selandian',61.6],['Paleocene','Danian',66.0],
+ ['Late Cretaceous','Maastrichtian',72.1],['Late Cretaceous','Campanian',83.6],['Late Cretaceous','Santonian',86.3],['Late Cretaceous','Coniacian',89.8],['Late Cretaceous','Turonian',93.9],['Late Cretaceous','Cenomanian',100.5],
+ ['Early Cretaceous','Albian',113.0],['Early Cretaceous','Aptian',121.4],['Early Cretaceous','Barremian',125.77],['Early Cretaceous','Hauterivian',132.6],['Early Cretaceous','Valanginian',139.8],['Early Cretaceous','Berriasian',145.0],
+ ['Late Jurassic','Tithonian',149.2],['Late Jurassic','Kimmeridgian',154.8],['Late Jurassic','Oxfordian',161.5],['Middle Jurassic','Callovian',165.3],['Middle Jurassic','Bathonian',168.2],['Middle Jurassic','Bajocian',170.9],['Middle Jurassic','Aalenian',174.7],
+ ['Early Jurassic','Toarcian',184.2],['Early Jurassic','Pliensbachian',192.9],['Early Jurassic','Sinemurian',199.5],['Early Jurassic','Hettangian',201.4],
+ ['Late Triassic','Rhaetian',208.5],['Late Triassic','Norian',227],['Late Triassic','Carnian',237],['Middle Triassic','Ladinian',242],['Middle Triassic','Anisian',247.2],['Early Triassic','Olenekian',251.2],['Early Triassic','Induan',251.9],
+ ['Lopingian','Changhsingian',254.14],['Lopingian','Wuchiapingian',259.51],['Guadalupian','Capitanian',264.28],['Guadalupian','Wordian',266.9],['Guadalupian','Roadian',273.01],['Cisuralian','Kungurian',283.5],['Cisuralian','Artinskian',290.1],['Cisuralian','Sakmarian',293.52],['Cisuralian','Asselian',298.9],
+ ['Pennsylvanian','Gzhelian',303.7],['Pennsylvanian','Kasimovian',307.0],['Pennsylvanian','Moscovian',315.2],['Pennsylvanian','Bashkirian',323.2],['Mississippian','Serpukhovian',330.9],['Mississippian','Visean',346.7],['Mississippian','Tournaisian',358.9],
+ ['Late Devonian','Famennian',372.2],['Late Devonian','Frasnian',382.7],['Middle Devonian','Givetian',387.7],['Middle Devonian','Eifelian',393.3],['Early Devonian','Emsian',407.6],['Early Devonian','Pragian',410.8],['Early Devonian','Lochkovian',419.2],
+ ['Pridoli','Pridoli',423.0],['Ludlow','Ludfordian',425.6],['Ludlow','Gorstian',427.4],['Wenlock','Homerian',430.5],['Wenlock','Sheinwoodian',433.4],['Llandovery','Telychian',438.5],['Llandovery','Aeronian',440.8],['Llandovery','Rhuddanian',443.8],
+ ['Late Ordovician','Hirnantian',445.2],['Late Ordovician','Katian',453.0],['Late Ordovician','Sandbian',458.4],['Middle Ordovician','Darriwilian',467.3],['Middle Ordovician','Dapingian',470.0],['Early Ordovician','Floian',477.7],['Early Ordovician','Tremadocian',485.4],
+ ['Furongian','Stage 10',489.5],['Furongian','Jiangshanian',494],['Furongian','Paibian',497],['Miaolingian','Guzhangian',500.5],['Miaolingian','Drumian',504.5],['Miaolingian','Wuliuan',509],['Cambrian Series 2','Stage 4',514],['Cambrian Series 2','Stage 3',521],['Terreneuvian','Stage 2',529],['Terreneuvian','Fortunian',538.8],
+];
+const JUMPS = [
+  ['Oldest stromatolites', 3430], ['Ediacaran biota', 556],
+  ['Cambrian seas', 512], ['Age of fishes', 385], ['Coal forests', 310], ['Dimetrodon', 285],
+  ['First dinosaurs', 228], ['Morrison Jurassic', 151], ['Late Cretaceous', 72], ['Last dinosaurs', 67], ['Rise of mammals', 40], ['Ice Age', 1],
+];
+// Mass extinctions. Big Five figures (share of species lost) from Barnosky et al. 2011, via Our World in Data.
+const EXTINCTIONS = [
+  { age: 538.8, short: 'End-Ediacaran', name: 'End-Ediacaran extinction', big: false,
+    cause: 'Most Ediacaran organisms vanished, possibly through ocean anoxia and the spread of burrowing and grazing animals.', sites: [] },
+  { age: 445, short: 'End-Ordovician', name: 'End-Ordovician mass extinction', big: true, lost: 86,
+    cause: 'Glaciation over Gondwana drove repeated sea-level falls and cooled the oceans.',
+    sites: [{ lng: 5, lat: 26, label: 'Gondwanan ice sheet', r: 1400 }] },
+  { age: 372.2, short: 'Late Devonian', name: 'Late Devonian mass extinction', big: true, lost: 75,
+    cause: 'Pulses of ocean anoxia and cooling, possibly linked to the spread of land plants; a second pulse followed at 359 Ma.',
+    sites: [{ lng: 10.4, lat: 51.8, label: 'Kellwasser black shales', r: 0 }] },
+  { age: 259.5, short: 'Capitanian', name: 'Capitanian extinction', big: false,
+    cause: 'Eruption of the Emeishan Traps in south-west China.',
+    sites: [{ lng: 103, lat: 26, label: 'Emeishan Traps', r: 350 }] },
+  { age: 251.9, short: 'End-Permian', name: 'End-Permian mass extinction (“the Great Dying”)', big: true, lost: 96,
+    cause: 'Siberian Traps volcanism caused global warming, ocean acidification and acid rain.',
+    sites: [{ lng: 98, lat: 66, label: 'Siberian Traps', r: 900 }] },
+  { age: 201.4, short: 'End-Triassic', name: 'End-Triassic mass extinction', big: true, lost: 80,
+    cause: 'Central Atlantic Magmatic Province volcanism as Pangaea began to split, causing warming and ocean change.',
+    sites: [{ lng: -78, lat: 38, label: 'CAMP basalts', r: 450 }, { lng: -7, lat: 31, label: 'CAMP basalts', r: 450 }, { lng: -48, lat: -6, label: 'CAMP basalts', r: 450 }] },
+  { age: 183, short: 'Toarcian', name: 'Toarcian ocean anoxic event', big: false,
+    cause: 'Karoo–Ferrar volcanism warmed the climate and starved the seas of oxygen.',
+    sites: [{ lng: 27, lat: -30, label: 'Karoo basalts', r: 500 }] },
+  { age: 66.0, short: 'End-Cretaceous', name: 'End-Cretaceous (K–Pg) mass extinction', big: true, lost: 76,
+    cause: 'Asteroid impact at Chicxulub, Yucatán, with Deccan Traps volcanism also implicated. All non-bird dinosaurs died out.',
+    sites: [{ lng: -89.5, lat: 21.3, label: 'Chicxulub impact', r: 0, impact: true }, { lng: 74, lat: 19, label: 'Deccan Traps', r: 450 }] },
+  { age: 0.05, short: 'Megafauna', name: 'Late Pleistocene megafauna extinction', big: false,
+    cause: 'Loss of mammoths, giant sloths and other large mammals, linked to human hunting and climate change.', sites: [] },
+];
+const EXT_WIN = 3;
+const nearExtinction = () => EXTINCTIONS.map(e => ({ e, d: Math.abs(state.t - e.age) })).filter(x => x.d <= (x.e.age < 1 ? 0.6 : EXT_WIN) && !(x.e.age === 538.8 && state.t < 538.8 - 1.5)).sort((a, b) => a.d - b.d)[0];
+function showExtinction() {
+  const box = $('#extinction'), n = P.ext && nearExtinction();
+  if (!n) { box.hidden = true; return; }
+  const e = n.e;
+  box.innerHTML = `<div class="ex-h"><span class="dagger">†</span>${e.name}</div><div class="ex-t">${e.age < 1 ? 'about 50,000–10,000 years ago' : `${e.age} Ma`}${e.lost ? ` · about ${e.lost}% of species lost` : ''}</div><div class="ex-c">${e.cause}</div>`;
+  box.hidden = false;
+}
+function drawExtinctionSites() {
+  const n = nearExtinction(); if (!n) return;
+  const fade = 1 - n.d / (EXT_WIN + 0.5), k = tform.k, col = css('--danger'), halo = css('--halo'), ink = css('--ink');
+  ctx.save(); ctx.lineJoin = 'round';
+  for (const s of n.e.sites) {
+    const [wx, wy] = proj([s.lng, s.lat]), x = wx * k + tform.x, y = wy * k + tform.y;
+    if (x < -200 || y < -200 || x > W + 200 || y > H + 200) continue;
+    ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = col; ctx.fillStyle = col;
+    if (s.r) { // affected area, radius in km
+      const rr = s.r / 111 * (WORLD / 360) * k / Math.cos(s.lat * Math.PI / 180);
+      ctx.setLineDash([5, 4]); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.globalAlpha = 0.08 * fade; ctx.fill(); ctx.globalAlpha = 0.9 * fade;
+    }
+    if (s.impact) { for (const r of [7, 14, 22]) { ctx.lineWidth = r === 7 ? 2.4 : 1.4; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); } }
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.font = '600 12.5px "IBM Plex Sans", system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    const lx = x + (s.impact ? 26 : 8);
+    ctx.globalAlpha = fade; ctx.strokeStyle = halo; ctx.lineWidth = 4; ctx.strokeText('† ' + s.label, lx, y); ctx.fillStyle = col; ctx.fillText('† ' + s.label, lx, y);
+  }
+  ctx.restore();
+}
+function buildExtinctionMarks() {
+  const row = $('#ext-row'); row.innerHTML = '';
+  for (const e of EXTINCTIONS) {
+    const b = document.createElement('button');
+    b.className = 'ext-mark' + (e.big ? ' big' : ''); b.textContent = '†';
+    b.style.left = (tToF(e.age) * 100) + '%';
+    b.title = `${e.name}: ${e.cause}`; b.setAttribute('aria-label', `Go to ${e.name}`);
+    b.onclick = () => { stop(); setTime(e.age); };
+    row.appendChild(b);
+  }
+}
+
+/* ------------------------------------------------------------ search */
+let GIDX = null, FOCUS = null, FOCUS_PREV = null;
+function genusIndex() {
+  if (GIDX) return GIDX;
+  const cnt = new Uint32Array(D.genera.length);
+  for (let i = 0; i < D.n; i++) cnt[REC.g[i]]++;
+  const off = new Uint32Array(D.genera.length + 1); for (let g = 0; g < D.genera.length; g++) off[g + 1] = off[g] + cnt[g];
+  const pos = off.slice(0, -1), idx = new Uint32Array(D.n);
+  for (let i = 0; i < D.n; i++) idx[pos[REC.g[i]]++] = i;
+  const lower = D.genera.map(n => n.toLowerCase());
+  GIDX = { off, idx, lower, recsOf: g => idx.subarray(off[g], off[g + 1]) };
+  return GIDX;
+}
+function suggest(q) {
+  const G = genusIndex(); q = q.trim().toLowerCase(); if (q.length < 2) return [];
+  const out = [];
+  for (const u of units) if (u.label.toLowerCase().includes(q)) out.push({ kind: 'group', u, name: u.label });
+  const pre = [], sub = [];
+  for (let g = 1; g < G.lower.length; g++) { const n = G.lower[g]; if (n.startsWith(q)) pre.push(g); else if (sub.length < 40 && n.includes(q)) sub.push(g); }
+  const recN = g => { let n = 0; for (const i of G.recsOf(g)) n += REC.n[i]; return n; };
+  const exact = pre.filter(g => G.lower[g] === q);
+  pre.sort((a, b) => recN(b) - recN(a) || D.genera[a].length - D.genera[b].length);
+  pre.sort((a, b) => exact.includes(b) - exact.includes(a));
+  for (const g of [...pre, ...sub]) {
+    if (out.length >= 9) break;
+    const recs = G.recsOf(g); if (!recs.length) continue;
+    const u = units[REC.unit[recs[0]]]; let hi = 0, lo = 1e9, n = 0;
+    for (const i of recs) { if (REC.hi[i] > hi) hi = REC.hi[i]; if (REC.lo[i] < lo) lo = REC.lo[i]; n += REC.n[i]; }
+    out.push({ kind: 'genus', g, name: D.genera[g], u, hi, lo, n });
+  }
+  return out.slice(0, 9);
+}
+let qSel = -1, qItems = [];
+function renderList() {
+  const ul = $('#q-list'), q = $('#q').value.trim();
+  qItems = suggest(q); qSel = qItems.length ? 0 : -1;
+  if (q.length < 2) { ul.hidden = true; $('#q').setAttribute('aria-expanded', 'false'); return; }
+  ul.innerHTML = qItems.length ? qItems.map((it, i) => `<li role="option" id="q-${i}" aria-selected="${i === qSel}" data-i="${i}"><img src="${iconURL[it.u.id]}" alt=""><span class="nm">${it.kind === 'genus' ? `<i>${it.name}</i>` : it.name}</span><span class="meta">${it.kind === 'genus' ? `${fmtMa(it.hi)}–${fmtMa(it.lo)} Ma` : 'group'}</span></li>`).join('')
+    : `<li class="empty">No genus or group called “${q.replace(/[<&]/g, '')}” in this dataset</li>`;
+  ul.hidden = false; $('#q').setAttribute('aria-expanded', 'true');
+}
+function markSel() { $('#q-list').querySelectorAll('li[data-i]').forEach(li => li.setAttribute('aria-selected', +li.dataset.i === qSel)); if (qSel >= 0) $('#q').setAttribute('aria-activedescendant', 'q-' + qSel); }
+function choose(it) {
+  $('#q-list').hidden = true; $('#q').setAttribute('aria-expanded', 'false'); $('#q').blur();
+  if (!it) return;
+  if (it.kind === 'group') { $('#q').value = ''; clearFocus(); state.solo = it.u.id; it.u.visible = true; syncLegend(); goPeakOfUnit(it.u); return; }
+  $('#q').value = it.name; focusGenus(it.g);
+}
+function profileOf(recs) { // weight per 1-Myr bin, 0..4000
+  const B = new Float32Array(4001);
+  for (const i of recs) {
+    const lo = REC.lo[i], hi = REC.hi[i], sp = Math.max(hi - lo, 0.1), n = REC.n[i];
+    const a = Math.floor(lo), b = Math.min(4000, Math.floor(hi));
+    if (a === b) { B[a] += n; continue; }
+    for (let k = a; k <= b; k++) { const ov = Math.min(k + 1, hi) - Math.max(k, lo); if (ov > 0) B[k] += n * ov / sp; }
+  }
+  return B;
+}
+function peakOf(B) {
+  let best = 0, bt = 0;
+  for (let k = 0; k <= 4000; k++) { const h = Math.round(winH(k)); let s = 0; for (let j = Math.max(0, k - h); j <= Math.min(4000, k + h); j++) s += B[j]; if (s > best) { best = s; bt = k + 0.5; } }
+  return bt;
+}
+function heartland(recs, t) {
+  const H = winH(t), lo = t - H, hi = t + H;
+  let use = recs.filter(i => REC.hi[i] >= lo && REC.lo[i] <= hi); if (!use.length) use = Array.from(recs);
+  const cell = new Map();
+  for (const i of use) { const k = Math.floor((REC.lng[i] / 2 + 180) / 10) * 100 + Math.floor((REC.lat[i] / 2 + 90) / 10); cell.set(k, (cell.get(k) || 0) + REC.n[i]); }
+  let bk = 0, bv = -1; for (const [k, v] of cell) if (v > bv) { bv = v; bk = k; }
+  const cLng = (Math.floor(bk / 100) * 10 - 180) + 5, cLat = (bk % 100) * 10 - 90 + 5;
+  const near = use.filter(i => Math.abs(REC.lng[i] / 2 - cLng) <= 22 && Math.abs(REC.lat[i] / 2 - cLat) <= 16);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, fm = new Map();
+  for (const i of near) { x0 = Math.min(x0, REC.x[i]); x1 = Math.max(x1, REC.x[i]); y0 = Math.min(y0, REC.y[i]); y1 = Math.max(y1, REC.y[i]); if (REC.f[i]) fm.set(REC.f[i], (fm.get(REC.f[i]) || 0) + REC.n[i]); }
+  let bf = 0, bfv = 0; for (const [f, v] of fm) if (v > bfv) { bfv = v; bf = f; }
+  return { box: [x0, y0, x1, y1], lng: cLng, lat: cLat, formation: bf ? D.formations[bf] : '', nNear: near.length, nAll: use.length };
+}
+function flyTo(box) {
+  const narrow = W < 760, left = narrow ? 0 : 390, right = narrow ? 0 : 330, top = narrow ? 230 : 70, bottom = narrow ? 215 : 210;
+  const minSpan = WORLD * 14 / 360;
+  let [x0, y0, x1, y1] = box; const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const bw = Math.max(x1 - x0, minSpan), bh = Math.max(y1 - y0, minSpan * 0.7);
+  const aw = Math.max(120, W - left - right), ah = Math.max(120, H - top - bottom), f = fitTransform();
+  const k = Math.max(f.k, Math.min(f.k * 18, Math.min(aw / bw, ah / bh) * 0.7));
+  const t = d3.zoomIdentity.translate(left + aw / 2 - k * cx, top + ah / 2 - k * cy).scale(k);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  d3.select(canvas).transition().duration(reduce ? 0 : 1100).call(zoom.transform, t);
+}
+function focusGenus(g, opts = {}) {
+  const G = genusIndex(), recs = G.recsOf(g); if (!recs.length) return;
+  const u = units[REC.unit[recs[0]]], name = D.genera[g];
+  const B = profileOf(recs), peak = peakOf(B);
+  let tot = 0; for (const v of B) tot += v; let acc = 0, p5 = 0, p95 = 0;
+  for (let k = 0; k <= 4000; k++) { acc += B[k]; if (!p5 && acc >= tot * 0.05) p5 = k; if (acc >= tot * 0.95) { p95 = k + 1; break; } }
+  let hi = 0, lo = 1e9, n = 0; for (const i of recs) { hi = Math.max(hi, REC.hi[i]); lo = Math.min(lo, REC.lo[i]); n += REC.n[i]; }
+  const hl = heartland(recs, peak);
+  FOCUS = { g, name, u, recs, peak, hi, lo, p5, p95, n, hl, B };
+  if (!FOCUS_PREV) FOCUS_PREV = { solo: state.solo };
+  state.solo = u.id; u.visible = true; syncLegend(); patchSig = '';
+  stop(); setTime(peak);
+  flyTo(hl.box);
+  showFocus();
+  try { if (/^[A-Za-z0-9-]+$/.test(name)) history.replaceState(null, '', '#' + name); } catch (e) {}
+}
+function goPeakOfUnit(u) {
+  let bi = 0, bv = -1; D.T.forEach((t, i) => { if (u.series[i] > bv) { bv = u.series[i]; bi = i; } });
+  stop(); setTime(D.T[bi]); render(); drawTimeline();
+}
+function showFocus() {
+  const box = $('#focus'); if (!FOCUS) { box.hidden = true; return; }
+  const F = FOCUS, dino = DINOPICS.has(F.u.section) || DINOPICS_UNITS.has(F.u.id);
+  const range = F.p5 && F.p95 && (F.p95 - F.p5) < (F.hi - F.lo) * 0.9 ? `${fmtMa(F.hi)}–${fmtMa(F.lo)} Ma <span class="sub">(most records ${fmtMa(F.p95)}–${fmtMa(F.p5)})</span>` : `${fmtMa(F.hi)}–${fmtMa(F.lo)} Ma`;
+  const iv = intervalAt(F.peak);
+  const place = `${Math.abs(F.hl.lat)}°${F.hl.lat >= 0 ? 'N' : 'S'}, ${Math.abs(F.hl.lng)}°${F.hl.lng >= 0 ? 'E' : 'W'} today`;
+  box.innerHTML = `<button class="close" aria-label="Clear search">×</button>
+    <h3><img src="${iconURL[F.u.id]}" alt=""><i>${F.name}</i></h3>
+    <div class="sub">${F.u.label} · ${F.n.toLocaleString()} fossil record${F.n === 1 ? '' : 's'} in this dataset</div>
+    <dl class="facts"><dt>Known from</dt><dd>${range}</dd>
+    <dt>Peak</dt><dd>${fmtMa(F.peak)} Ma · ${iv.period}${iv.stage && iv.stage !== iv.period ? ', ' + iv.stage : ''}</dd>
+    <dt>Heartland</dt><dd>${F.hl.formation ? F.hl.formation + ' · ' : ''}${place}</dd></dl>
+    <div class="acts"><button id="f-peak">Back to peak</button>
+      ${dino ? `<a href="https://dinosaurpictures.org/${encodeURIComponent(F.name)}-pictures" target="_blank" rel="noopener">Pictures</a>` : ''}
+      <a href="https://paleobiodb.org/classic/checkTaxonInfo?taxon_name=${encodeURIComponent(F.name)}" target="_blank" rel="noopener">Paleobiology Database</a></div>`;
+  box.hidden = false;
+  box.querySelector('.close').onclick = clearFocus;
+  $('#f-peak').onclick = () => { stop(); setTime(F.peak); flyTo(F.hl.box); };
+}
+function clearFocus() { if (FOCUS_PREV) { state.solo = FOCUS_PREV.solo; FOCUS_PREV = null; syncLegend(); patchSig = ''; } FOCUS = null; $('#focus').hidden = true; $('#q').value = ''; try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} render(); drawTimeline(); }
+function drawFocusMarks() {
+  if (!FOCUS) return;
+  const k = tform.k, tx = tform.x, ty = tform.y, t = state.t, Hw = winH(t), lo = t - Hw, hi = t + Hw, col = css('--accent'), halo = css('--halo');
+  ctx.save(); ctx.lineWidth = 2;
+  let any = 0;
+  for (const i of FOCUS.recs) {
+    const live = REC.hi[i] >= lo && REC.lo[i] <= hi;
+    const x = REC.x[i] * k + tx, y = REC.y[i] * k + ty; if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+    const r = 7 + 4 * Math.sqrt(REC.n[i]);
+    if (live) { any++; ctx.globalAlpha = 1; ctx.strokeStyle = halo; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.strokeStyle = col; ctx.lineWidth = 2.2; ctx.stroke(); }
+    else { ctx.globalAlpha = .45; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  }
+  ctx.restore();
+}
+function setupSearch() {
+  const q = $('#q');
+  q.addEventListener('input', renderList);
+  q.addEventListener('focus', () => { if (q.value.trim().length >= 2) renderList(); });
+  q.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (qItems.length) { qSel = (qSel + 1) % qItems.length; markSel(); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (qItems.length) { qSel = (qSel - 1 + qItems.length) % qItems.length; markSel(); } }
+    else if (e.key === 'Enter') { e.preventDefault(); if (!qItems.length) renderList(); choose(qItems[Math.max(0, qSel)]); }
+    else if (e.key === 'Escape') { $('#q-list').hidden = true; q.blur(); }
+  });
+  $('#q-list').addEventListener('mousedown', e => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); choose(qItems[+li.dataset.i]); } });
+  q.addEventListener('blur', () => setTimeout(() => { $('#q-list').hidden = true; q.setAttribute('aria-expanded', 'false'); }, 120));
+  const fromHash = () => { const h = decodeURIComponent(location.hash.slice(1)); if (!h) return; const g = D.genera.indexOf(h); if (g > 0) { $('#q').value = h; focusGenus(g); } };
+  window.addEventListener('hashchange', fromHash);
+  return fromHash;
+}
+
+/* ------------------------------------------------------------ climate */
+let CL = null;
+function prepClimate() {
+  CL.main = CL.stages.filter(s => !s.spike).sort((a, b) => a.age - b.age);
+  CL.petm = CL.stages.find(s => s.spike);
+}
+const lerp = (a, b, f) => a + (b - a) * f;
+const lerpArr = (a, b, f) => a.map((x, i) => x == null || b[i] == null ? null : lerp(x, b[i], f));
+const logBand = (tab, t) => { // [age, lo, hi] anchors, log interpolation
+  for (let i = 0; i < tab.length - 1; i++) { const [a0, l0, h0] = tab[i], [a1, l1, h1] = tab[i + 1]; if (t <= a0 && t >= a1) { const f = (a0 - t) / (a0 - a1); return [Math.exp(lerp(Math.log(l0), Math.log(l1), f)), Math.exp(lerp(Math.log(h0), Math.log(h1), f))]; } }
+  return null;
+};
+function climateAt(t) {
+  const c = { t };
+  const S = CL.main;
+  // PhanDA stages (485-0 Ma), linear between stage mid-ages; PETM spike shown only inside it
+  if (t <= S[S.length - 1].age + 3) {
+    let st;
+    if (CL.petm && t >= CL.petm.top && t <= CL.petm.base) st = CL.petm;
+    if (!st) {
+      let i = S.findIndex(s => s.age >= t);
+      if (i < 0) i = S.length - 1;
+      const b = S[i], a = S[Math.max(0, i - 1)], f = b.age === a.age ? 0 : Math.max(0, Math.min(1, (t - a.age) / (b.age - a.age)));
+      st = { gmst: lerpArr(a.gmst, b.gmst, f), co2: lerpArr(a.co2, b.co2, f), sat: lerpArr(a.sat, b.sat, f), sst: lerpArr(a.sst, b.sst, f),
+             ice: [0, 1].map(k => (a.ice[k] == null && b.ice[k] == null) ? null : lerp(a.ice[k] ?? 92, b.ice[k] ?? 92, f)), stage: f < 0.5 ? a.stage : b.stage };
+    }
+    c.gmst = st.gmst; c.co2 = [st.co2[0], st.co2[2], st.co2[4]]; c.co2src = 'PhanDA'; c.sat = st.sat; c.sst = st.sst;
+    c.ice = st.ice.map(v => v != null && v < 90 ? v : null);
+  }
+  // GEOCARBSULFOR (550-0 Ma): oxygen always, CO2 before PhanDA
+  if (t <= 550) {
+    const g = CL.gc, i = Math.max(0, Math.min(g.t.length - 1, Math.round(t)));
+    c.o2 = [g.o2lo[i], g.o2[i], g.o2hi[i]]; c.o2src = 'model';
+    if (!c.co2) { c.co2 = [g.co2lo[i], g.co2[i], g.co2hi[i]]; c.co2src = 'model'; }
+  }
+  if (!c.o2) { const b = logBand(CL.pre_o2, t); if (b) { c.o2 = [b[0], Math.sqrt(b[0] * b[1]), b[1]]; c.o2src = 'range'; } }
+  if (!c.co2) { const b = logBand(CL.pre_co2, t); if (b) { c.co2 = [b[0], Math.sqrt(b[0] * b[1]), b[1]]; c.co2src = 'range'; } }
+  // dated glaciations override
+  for (const g of CL.glaciations) if (t <= g.a && t >= g.b) { c.glac = g; c.ice = [Math.min(c.ice?.[0] ?? 90, g.ice), Math.min(c.ice?.[1] ?? 90, g.ice)]; }
+  if (!c.ice) c.ice = [null, null];
+  return c;
+}
+const fmtPpm = v => v >= 10000 ? (Math.round(v / 1000) * 1000).toLocaleString() : v >= 1000 ? (Math.round(v / 10) * 10).toLocaleString() : Math.round(v).toString();
+const fmtPct = v => v >= 1 ? (v >= 10 ? Math.round(v) : v.toFixed(1)) : v >= 0.01 ? v.toFixed(2) : v.toExponential(0).replace('e', '×10^').replace(/\^(-?\d+)/, (m, p) => toSup(p));
+const toSup = s => s.replace(/-/g, '⁻').replace(/\d/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]);
+const latName = v => `${Math.round(Math.abs(v))}°`;
+const latAt = (arr, lat) => { // arr on CL.lats grid (90 .. -90 step 5)
+  const i = (90 - lat) / 5, i0 = Math.max(0, Math.min(arr.length - 1, Math.floor(i))), i1 = Math.min(arr.length - 1, i0 + 1);
+  return lerp(arr[i0], arr[i1], i - i0);
+};
+// diverging temperature scale, °C
+const TSTOPS = [[-40, [52, 70, 150]], [-20, [86, 120, 200]], [-5, [160, 196, 230]], [5, [214, 232, 236]], [15, [244, 230, 170]], [25, [244, 176, 96]], [32, [222, 104, 62]], [40, [160, 40, 50]]];
+function tcol(v, a = 1) {
+  if (v == null) return 'rgba(0,0,0,0)';
+  let i = 0; while (i < TSTOPS.length - 2 && v > TSTOPS[i + 1][0]) i++;
+  const [t0, c0] = TSTOPS[i], [t1, c1] = TSTOPS[i + 1], f = Math.max(0, Math.min(1, (v - t0) / (t1 - t0)));
+  return `rgba(${c0.map((x, k) => Math.round(lerp(x, c1[k], f))).join(',')},${a})`;
+}
+function showClimate() {
+  const box = $('#climate'); if (!CL) return;
+  const c = climateAt(state.t); let h = '';
+  if (c.gmst) h += `<div><div class="k">Air, global mean</div><div class="v">${c.gmst[2].toFixed(1)} °C <span class="r">${c.gmst[0].toFixed(0)}–${c.gmst[4].toFixed(0)}</span></div></div>`;
+  else h += `<div><div class="k">Air, global mean</div><div class="v r">${c.glac?.kind === 'global' ? 'Frozen: snowball Earth' : 'Not reconstructed'}</div></div>`;
+  if (c.sst) h += `<div><div class="k">Sea, tropics / poles</div><div class="v">${latAt(c.sst, 0).toFixed(0)} / ${((latAt(c.sst, 85) + latAt(c.sst, -85)) / 2).toFixed(0)} °C</div></div>`;
+  else h += `<div><div class="k">Sea, tropics / poles</div><div class="v r">Not reconstructed</div></div>`;
+  if (c.co2) h += `<div><div class="k">CO₂</div><div class="v">${c.co2src === 'range' ? '' : fmtPpm(c.co2[1]) + ' ppm '}<span class="r">${c.co2src === 'range' ? 'roughly ' : ''}${fmtPpm(c.co2[0])}–${fmtPpm(c.co2[2])}${c.co2src === 'range' ? ' ppm' : ''}</span></div></div>`;
+  if (c.o2) h += `<div><div class="k">Oxygen</div><div class="v">${c.o2src === 'range' ? '' : fmtPct(c.o2[1]) + '% '}<span class="r">${c.o2src === 'range' ? 'roughly ' : ''}${fmtPct(c.o2[0])}–${fmtPct(c.o2[2])}${c.o2src === 'range' ? '%' : ''}</span></div></div>`;
+  const [n, sI] = c.ice;
+  const iceTxt = c.glac?.kind === 'global' ? `${c.glac.name}: ice to the equator` : c.glac ? `${c.glac.name}: ice to about ${c.glac.ice}°` :
+    (n == null && sI == null) ? 'No permanent polar ice' : [sI != null ? `south to ${latName(sI)}S` : null, n != null ? `north to ${latName(n)}N` : null].filter(Boolean).join(', ').replace(/^./, m => 'Ice ' + m);
+  h += `<div class="full"><div class="k">Ice</div><div class="v">${iceTxt}</div></div>`;
+  if (P.belts && (c.sat || c.sst)) h += `<div class="full"><div class="k">Temperature belts, °C</div><div class="bar" style="background:linear-gradient(90deg,${[-40, -20, -5, 5, 15, 25, 32, 40].map(v => tcol(v)).join(',')})"></div><div class="barlab"><span>−40</span><span>0</span><span>25</span><span>40</span></div></div>`;
+  box.innerHTML = h;
+}
+function drawBelts(k) {
+  const c = climateAt(state.t); if (!c.sat && !c.sst) return;
+  const y = lat => proj([0, lat])[1];
+  const grad = arr => { const g = ctx.createLinearGradient(0, y(84), 0, y(-84)); const y0 = y(84), y1 = y(-84);
+    for (let lat = 84; lat >= -84; lat -= 4) g.addColorStop(Math.max(0, Math.min(1, (y(lat) - y0) / (y1 - y0))), tcol(latAt(arr, lat), 1)); return g; };
+  ctx.save(); ctx.globalAlpha = isDark() ? 0.5 : 0.42;
+  if (c.sst) { ctx.fillStyle = grad(c.sst); ctx.fillRect(-WORLD, y(84), WORLD * 2, y(-84) - y(84)); }
+  if (c.sat) { ctx.save(); ctx.clip(landPath); ctx.fillStyle = grad(c.sat); ctx.fillRect(-WORLD, y(84), WORLD * 2, y(-84) - y(84)); ctx.restore(); }
+  ctx.restore();
+}
+function drawIce(k) {
+  const c = climateAt(state.t), [n, sI] = c.ice; if (n == null && sI == null) return;
+  const y = lat => proj([0, Math.max(-85, Math.min(85, lat))])[1], fade = 3 / k * 6;
+  ctx.save();
+  const ice = isDark() ? '220,235,245' : '252,254,255', edge = isDark() ? 'rgba(200,225,240,.55)' : 'rgba(120,160,185,.55)';
+  const band = (from, to) => { // from = ice line lat, to = pole
+    const ya = y(from), yb = y(to), g = ctx.createLinearGradient(0, ya, 0, ya + Math.sign(yb - ya) * fade);
+    g.addColorStop(0, `rgba(${ice},0)`); g.addColorStop(1, `rgba(${ice},.82)`);
+    ctx.fillStyle = g; ctx.fillRect(-WORLD, Math.min(ya, yb), WORLD * 2, Math.abs(yb - ya));
+    ctx.strokeStyle = edge; ctx.lineWidth = 1 / k; ctx.setLineDash([4 / k, 3 / k]); ctx.beginPath(); ctx.moveTo(-WORLD, ya); ctx.lineTo(WORLD, ya); ctx.stroke(); ctx.setLineDash([]);
+  };
+  if (n != null && sI != null && n <= 1 && sI <= 1) { ctx.fillStyle = `rgba(${ice},.62)`; ctx.fillRect(-WORLD, y(85), WORLD * 2, y(-85) - y(85)); }
+  else { if (n != null) band(n, 85); if (sI != null) band(-sI, -85); }
+  ctx.restore();
+}
+function climateTip(mx, my) {
+  if (!CL || !(P.belts || P.ice)) return '';
+  const wy = (my - tform.y) / tform.k, lat = proj.invert([0, wy])[1];
+  if (!isFinite(lat) || Math.abs(lat) > 85) return '';
+  const c = climateAt(state.t), onLand = ctx.isPointInPath(landPathScreen(), mx * DPR, my * DPR);
+  const iceHere = (lat >= 0 && c.ice[0] != null && lat >= c.ice[0]) || (lat < 0 && c.ice[1] != null && -lat >= c.ice[1]);
+  let h = '';
+  if (P.ice && iceHere) h += `<b>${c.glac ? c.glac.name : 'Polar ice'}</b><div class="t-sub">${c.glac ? 'Dated glaciation' : 'Estimated: mean annual air below −10 °C'}</div>`;
+  if (P.belts && (c.sat || c.sst)) {
+    const a = c.sat ? latAt(c.sat, lat) : null, sv = c.sst ? latAt(c.sst, lat) : null;
+    h += `${h ? '<div class="t-rule"></div>' : ''}<b>At ${latName(lat)}${lat >= 0 ? 'N' : 'S'} latitude</b><div>${onLand || sv == null ? `Air ≈ ${a.toFixed(0)} °C` : `Sea surface ≈ ${sv.toFixed(0)} °C`}${onLand && sv != null ? ` <span class="t-sub">· sea ≈ ${sv.toFixed(0)} °C</span>` : (!onLand && a != null ? ` <span class="t-sub">· air ≈ ${a.toFixed(0)} °C</span>` : '')}</div><div class="t-sub">Annual mean for this latitude, not this place</div>`;
+  }
+  return h;
+}
+
+const DINOPICS = new Set(['Dinosaurs']);
+const DINOPICS_UNITS = new Set(['pteranodon','pterosaurs','plesiosaurs','ichthyosaurs','mosasaurs','dimetrodon']);
+const MAXMA = 4000;
+// compressed Precambrian: 4000–1000 Ma and 1000–541 Ma each take a tenth of the slider, the Phanerozoic the rest
+const SEG = [[4000, 1000, 0, 0.10], [1000, 541, 0.10, 0.20], [541, 0, 0.20, 1]];
+const tToF = t => { for (const [a, b, f0, f1] of SEG) if (t <= a && t >= b) return f0 + (a - t) / (a - b) * (f1 - f0); return t > 4000 ? 0 : 1; };
+const fToT = f => { for (const [a, b, f0, f1] of SEG) if (f >= f0 && f <= f1) return a - (f - f0) / (f1 - f0) * (a - b); return f < 0 ? 4000 : 0; };
+const winH = t => t <= 541 ? 2.5 : t <= 1000 ? 10 : 25;
+const fmtMa = t => t >= 1000 ? Math.round(t / 10) * 10 : t >= 10 ? Math.round(t) : t.toFixed(1);
+
+const $ = s => document.querySelector(s);
+const canvas = $('#map'), ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+const WORLD = 1000; // world px across 360°
+const proj = d3.geoMercator().scale(WORLD / (2 * Math.PI)).translate([0, 0]).precision(0.2);
+let tform = d3.zoomIdentity;
+let state = { t: 150, solo: null, playing: false };
+let D, units, landPath, gratPath, iconCanvas = {}, iconURL = {};
+let REC = {}; // typed arrays
+let ranges = [];
+let drawn = [], cellsLast = new Map();
+const P = { ice: true, belts: false, curve: 'fossils', on: true, icons: true, names: true, bounds: true, ext: true, mode: 'focus', compare: 'Dinosaurs', spread: 6, clip: true };
+const PATCH_NAMES = { seedferns: 'Seed ferns', cyanobacteria: 'Cyanobacteria',  diplodocoids: 'Diplodocoids', macronarians: 'Brachiosaurs & titanosaurs', sauropodomorphs: 'Early sauropodomorphs', stegosaurs: 'Stegosaurs', ankylosaurs: 'Ankylosaurs', ceratosaurs: 'Ceratosaurs', carnosaurs: 'Allosaurs & kin', tyrannosaurs: 'Tyrannosaurs', raptors: 'Raptors', coelurosaurs: 'Ostrich mimics & kin', theropods: 'Other theropods', pachys: 'Pachycephalosaurs', otherdinos: 'Other dinosaurs', pterosaurs: 'Pterosaurs', synapsids: 'Synapsids', mammals: 'Small mammals', ceratopsians: 'Ceratopsians', ornithopods: 'Iguanodonts', hadrosaurs: 'Hadrosaurs', proboscideans: 'Elephants & kin', carnivorans: 'Carnivores' };
+const PG = { cw: 4 };
+let patchSig = '', patch = null;
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function isDark() { return css('color-scheme').includes('dark') || css('--halo') === '#0c171b'; }
+
+function hexToHsl(h) {
+  const n = parseInt(h.slice(1), 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let hh = 0, s = 0, l = (mx + mn) / 2;
+  if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    hh = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; hh /= 6; }
+  return [hh * 360, s * 100, l * 100];
+}
+function unitColor(u) {
+  if (!isDark()) return u.color;
+  const [h, s, l] = hexToHsl(u.color);
+  return `hsl(${h}, ${Math.min(80, s * 1.05)}%, ${Math.max(l + 22, 64)}%)`;
+}
+
+function buildIcons() {
+  const halo = css('--halo');
+  const S = 96;
+  for (const u of units) {
+    const c = document.createElement('canvas'); c.width = c.height = S;
+    const g = c.getContext('2d');
+    const p = new Path2D(ICONS[u.icon]);
+    const sc = S * 0.84 / 512, off = S * 0.08;
+    g.setTransform(sc, 0, 0, sc, off, off);
+    g.lineJoin = 'round'; g.lineWidth = 46; g.strokeStyle = halo; g.stroke(p); g.fillStyle = halo; g.fill(p);
+    g.fillStyle = unitColor(u); g.fill(p);
+    iconCanvas[u.id] = c; iconURL[u.id] = c.toDataURL();
+  }
+  document.querySelectorAll('img[data-u]').forEach(im => im.src = iconURL[im.dataset.u]);
+}
+
+function b64(s, T) { const bin = atob(s); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new T(u8.buffer); }
+
+async function load() {
+  const [data, land, clim] = await Promise.all([fetch('fossils.json').then(r => r.json()), fetch('land.json').then(r => r.json()), fetch('climate.json').then(r => r.json())]);
+  CL = clim; prepClimate();
+  D = data; units = D.units;
+  const c = D.cols;
+  REC.unit = b64(c.unit, Uint8Array); REC.lng = b64(c.lng, Int16Array); REC.lat = b64(c.lat, Int16Array);
+  REC.mx = b64(c.mx, Uint16Array); REC.mn = b64(c.mn, Uint16Array); REC.g = b64(c.g, Uint16Array); REC.f = b64(c.f, Uint16Array); REC.e = b64(c.e, Uint8Array); REC.r = b64(c.r, Uint8Array); REC.n = b64(c.n, Uint16Array);
+  const N = D.n; REC.x = new Float32Array(N); REC.y = new Float32Array(N); REC.lo = new Float32Array(N); REC.hi = new Float32Array(N); REC.span = new Float32Array(N);
+  ranges = units.map(() => [0, 0]);
+  for (let i = 0; i < N; i++) {
+    const p = proj([REC.lng[i] / 2, Math.max(-84, Math.min(84, REC.lat[i] / 2))]);
+    REC.x[i] = p[0]; REC.y[i] = p[1];
+    REC.hi[i] = REC.mx[i] / 10; REC.lo[i] = REC.mn[i] / 10; REC.span[i] = Math.max(REC.hi[i] - REC.lo[i], 0.1);
+    const u = REC.unit[i]; if (i === 0 || REC.unit[i - 1] !== u) ranges[u][0] = i; ranges[u][1] = i + 1;
+  }
+  {
+    const yN = proj([0, 84])[1], yS = proj([0, -84])[1];
+    PG.y0 = yN; PG.cols = Math.ceil(WORLD / PG.cw); PG.rows = Math.ceil((yS - yN) / PG.cw);
+    PG.canvas = document.createElement('canvas'); PG.canvas.width = PG.cols; PG.canvas.height = PG.rows; PG.g = PG.canvas.getContext('2d');
+    PG.cellOf = new Int32Array(N);
+    for (let i = 0; i < N; i++) {
+      const cx = Math.max(0, Math.min(PG.cols - 1, Math.floor((REC.x[i] + WORLD / 2) / PG.cw)));
+      const cy = Math.max(0, Math.min(PG.rows - 1, Math.floor((REC.y[i] - yN) / PG.cw)));
+      PG.cellOf[i] = cy * PG.cols + cx;
+    }
+  }
+  units.forEach((u, i) => { u.idx = i; u.visible = !!u.on; const m = Math.max(...u.series); u.max = m || 1; });
+  const landF = topojson.feature(land, land.objects.land);
+  landPath = new Path2D(d3.geoPath(proj)(landF));
+  gratPath = new Path2D(d3.geoPath(proj)(d3.geoGraticule().step([30, 30]).extent([[-180, -80], [180, 80.01]])()));
+  $('#about-count').textContent = `${D.occurrences.toLocaleString()} fossil occurrences in ${units.length} groups.`;
+  buildLegend(); buildIcons(); buildJumps(); setupLayers(); buildExtinctionMarks();
+  resize(); setupZoom();
+  $('#loading').hidden = true;
+  const fromHash = setupSearch();
+  setTime(150);
+  if (location.hash.length > 1) setTimeout(fromHash, 50);
+}
+
+/* ------------------------------------------------------------ legend */
+function buildLegend() {
+  const box = $('#units'); box.innerHTML = '';
+  const secs = [...new Set(units.map(u => u.section))];
+  for (const s of secs) {
+    const sec = document.createElement('div'); sec.className = 'sec';
+    const id = 'sec-' + s.replace(/\W+/g, '');
+    sec.innerHTML = `<label class="sec-head"><input type="checkbox" id="${id}">${s}</label>`;
+    box.appendChild(sec);
+    for (const u of units.filter(u => u.section === s)) {
+      const r = document.createElement('div'); r.className = 'row'; r.dataset.u = u.id;
+      r.innerHTML = `<input type="checkbox" id="cb-${u.id}" aria-label="Show ${u.label}">
+        <img data-u="${u.id}" alt="">
+        <button class="name" title="${u.label}: ${u.total.toLocaleString()} occurrences">${u.kind === 'genus' ? '<i>' + u.label.replace(' & ', '</i> & <i>') + '</i>' : u.label}</button>
+        <canvas width="128" height="36" aria-hidden="true"></canvas>`;
+      sec.appendChild(r);
+      u.row = r; u.spark = r.querySelector('canvas'); u.cb = r.querySelector('input');
+      u.cb.checked = u.visible;
+      u.cb.addEventListener('change', () => { u.visible = u.cb.checked; if (state.solo && state.solo !== u.id && u.visible) state.solo = null; syncLegend(); render(); drawTimeline(); });
+      r.querySelector('button').addEventListener('click', () => { state.solo = state.solo === u.id ? null : u.id; if (state.solo) { u.visible = true; } syncLegend(); render(); drawTimeline(); });
+    }
+    const scb = sec.querySelector('input');
+    scb.addEventListener('change', () => { units.filter(u => u.section === s).forEach(u => u.visible = scb.checked); state.solo = null; syncLegend(); render(); drawTimeline(); });
+  }
+  syncLegend();
+}
+function syncLegend() {
+  for (const u of units) { u.cb.checked = u.visible; u.row.classList.toggle('solo', state.solo === u.id); u.row.classList.toggle('off', !isShown(u)); }
+  const secs = [...new Set(units.map(u => u.section))];
+  for (const s of secs) {
+    const us = units.filter(u => u.section === s), on = us.filter(u => u.visible).length;
+    const cb = document.getElementById('sec-' + s.replace(/\W+/g, ''));
+    cb.checked = on === us.length; cb.indeterminate = on > 0 && on < us.length;
+  }
+}
+const isShown = u => state.solo ? u.id === state.solo : u.visible;
+
+function seriesAt(u, t) {
+  let i, f; if (t <= 541) { i = Math.floor(t); f = t - i; } else if (t < 550) { i = 541; f = (t - 541) / 9; } else { i = 542 + Math.floor((t - 550) / 10); f = ((t - 550) % 10) / 10; }
+  const a = u.series[i] || 0, b = u.series[i + 1] ?? a; return a + (b - a) * f;
+}
+
+function drawSparks() {
+  const acc = css('--accent'), mut = css('--line');
+  for (const u of units) {
+    const c = u.spark, g = c.getContext('2d'), w = c.width, h = c.height;
+    g.clearRect(0, 0, w, h);
+    const col = unitColor(u);
+    g.beginPath(); g.moveTo(0, h);
+    for (let x = 0; x <= w; x++) { const t = fToT(x / w); const v = Math.sqrt(seriesAt(u, t) / u.max); g.lineTo(x, h - 2 - v * (h - 5)); }
+    g.lineTo(w, h); g.closePath(); g.fillStyle = col; g.globalAlpha = .55; g.fill(); g.globalAlpha = 1;
+    const cx = tToF(state.t) * w; g.fillStyle = acc; g.fillRect(cx - 1, 0, 2, h);
+    u.row.classList.toggle('absent', seriesAt(u, state.t) < 0.05);
+  }
+}
+
+/* ------------------------------------------------------------ patches */
+function boxBlur(a, tmp, cols, rows, r) {
+  const w = 2 * r + 1;
+  for (let y = 0; y < rows; y++) { // horizontal
+    const o = y * cols; let s = 0;
+    for (let x = -r; x <= r; x++) s += a[o + Math.max(0, Math.min(cols - 1, x))];
+    for (let x = 0; x < cols; x++) {
+      tmp[o + x] = s / w;
+      s += a[o + Math.min(cols - 1, x + r + 1)] - a[o + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < cols; x++) { // vertical
+    let s = 0;
+    for (let y = -r; y <= r; y++) s += tmp[Math.max(0, Math.min(rows - 1, y)) * cols + x];
+    for (let y = 0; y < rows; y++) {
+      a[y * cols + x] = s / w;
+      s += tmp[Math.min(rows - 1, y + r + 1) * cols + x] - tmp[Math.max(0, y - r) * cols + x];
+    }
+  }
+}
+function patchMembers() {
+  const groups = new Map();
+  for (const u of units) {
+    // patches only ever use groups that are shown on the map; a single picked group stands alone
+    if (!isShown(u)) continue;
+    if (!state.solo && P.compare !== 'shown' && u.section !== P.compare) continue;
+    const pu = state.solo ? u : (units.find(v => v.id === u.parent) || u);
+    if (!groups.has(pu.id)) groups.set(pu.id, { u: pu, members: [] });
+    groups.get(pu.id).members.push(u);
+  }
+  return [...groups.values()];
+}
+function computePatches() {
+  const cols = PG.cols, rows = PG.rows, N = cols * rows, t = state.t, lo = t - winH(t), hi = t + winH(t);
+  const degPerCell = PG.cw * 360 / WORLD;
+  const sig = Math.max(1, P.spread / degPerCell / 1.7), sigma2 = sig * sig;
+  const R = Math.ceil(sig * 2.6), KW = 2 * R + 1, ker = new Float32Array(KW * KW);
+  { let ks = 0; for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) { const d2 = dx * dx + dy * dy; const v = d2 > R * R ? 0 : Math.exp(-d2 / (2 * sigma2)); ker[(dy + R) * KW + dx + R] = v; ks += v; } for (let i = 0; i < ker.length; i++) ker[i] /= ks; }
+  const p1 = ker[R * KW + R]; // peak density of one isolated record
+  // one density surface per group and realm (land 0, sea 1)
+  const gs = [];
+  for (const g of patchMembers()) {
+    const pts = [new Map(), new Map()], mass = [0, 0];
+    for (const u of g.members) {
+      const [s, e] = ranges[u.idx];
+      for (let i = s; i < e; i++) {
+        if (REC.hi[i] < lo || REC.lo[i] > hi) continue;
+        const ov = Math.min(REC.hi[i], hi) - Math.max(REC.lo[i], lo);
+        const v = REC.n[i] * Math.min(ov / REC.span[i], 1); if (v <= 0) continue;
+        const r = REC.r[i], c = PG.cellOf[i]; pts[r].set(c, (pts[r].get(c) || 0) + v); mass[r] += v;
+      }
+    }
+    for (const realm of [0, 1]) {
+      if (mass[realm] < 0.3) continue;
+      const a = new Float32Array(N);
+      for (const [c, v] of pts[realm]) {
+        const cx = c % cols, cy = (c / cols) | 0;
+        for (let dy = -R; dy <= R; dy++) {
+          const y = cy + dy; if (y < 0 || y >= rows) continue;
+          const ro = y * cols, ko = (dy + R) * KW + R;
+          for (let dx = -R; dx <= R; dx++) { const x = cx + dx; if (x < 0 || x >= cols) continue; const w = ker[ko + dx]; if (w) a[ro + x] += v * w; }
+        }
+      }
+      let mx = 0; for (let c = 0; c < N; c++) if (a[c] > mx) mx = a[c];
+      gs.push({ u: g.u, realm, d: a, max: mx, mass: mass[realm], members: g.members });
+    }
+  }
+  // colour: dominant group per cell, land and sea entries of one group pooled
+  const parents = [...new Set(gs.map(g => g.u.id))], pIdx = gs.map(g => parents.indexOf(g.u.id));
+  const pUnit = parents.map(id => gs.find(g => g.u.id === id).u), pMax = parents.map(id => Math.max(...gs.filter(g => g.u.id === id).map(g => g.max)));
+  const NP = parents.length, vals = new Float32Array(NP);
+  const win = new Int16Array(N).fill(-1), sec = new Int16Array(N).fill(-1);
+  const share = new Float32Array(N), share2 = new Float32Array(N), alpha = new Float32Array(N), local = new Float32Array(N);
+  const alphaR = [new Float32Array(N), new Float32Array(N)];
+  const vbuf = new Float32Array(NP * N), bestV = new Float32Array(N), secV = new Float32Array(N);
+  const img = PG.g.createImageData(cols, rows), px = img.data;
+  const rgb = pUnit.map(u => { const c = d3.color(u.color).rgb(); return [c.r, c.g, c.b]; }), dk = isDark() ? 1.25 : 1;
+  for (let c = 0; c < N; c++) {
+    vals.fill(0); let raw = 0, raw0 = 0, raw1 = 0;
+    for (let j = 0; j < gs.length; j++) { const d = gs[j].d[c]; if (d <= 0) continue; vals[pIdx[j]] += d; raw += d; if (gs[j].realm) raw1 += d; else raw0 += d; }
+    if (raw <= 0) continue;
+    alphaR[0][c] = Math.min(1, Math.max(0, (raw0 / p1 - 0.35) / 2.5));
+    alphaR[1][c] = Math.min(1, Math.max(0, (raw1 / p1 - 0.35) / 2.5));
+    let best = -1, bv = 0, s2 = -1, sv = 0, sum = 0;
+    for (let q = 0; q < NP; q++) {
+      if (vals[q] <= 0) continue;
+      const v = P.mode === 'focus' ? vals[q] / pMax[q] : vals[q]; sum += v; vbuf[q * N + c] = v;
+      if (v > bv) { s2 = best; sv = bv; best = q; bv = v; } else if (v > sv) { s2 = q; sv = v; }
+    }
+    let a = Math.min(1, Math.max(0, (raw / p1 - 0.35) / 2.5));
+    if (P.mode === 'focus') a *= Math.min(1, bv / 0.08);
+    if (a <= 0.01) continue;
+    const sh = bv / sum;
+    bestV[c] = bv; secV[c] = sv;
+    win[c] = best; sec[c] = s2; share[c] = sh; share2[c] = s2 >= 0 ? sv / sum : 0; local[c] = raw / p1;
+    const A = Math.min(0.9, a * (0.42 + 0.3 * sh) * dk); alpha[c] = A;
+    const o = c * 4, col = rgb[best];
+    px[o] = col[0]; px[o + 1] = col[1]; px[o + 2] = col[2]; px[o + 3] = Math.round(A * 255);
+  }
+  PG.g.putImageData(img, 0, 0);
+  // boundaries: traced once per meeting line on a coarser, smoothed copy of the winner map.
+  // Each group's share of occupied ground is blurred and contoured at 0.5, so two groups meeting
+  // produce one shared line; small rings (noise from thin data) are dropped.
+  PG.bounds = null; PG.pres = null;
+  {
+    const F = 2, cc = Math.ceil(cols / F), cr = Math.ceil(rows / F), M = cc * cr;
+    const occ = new Float32Array(M), cnt = new Map();
+    const ind = new Map();
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const c = y * cols + x, q = win[c]; if (q < 0 || alpha[c] < 0.12) continue;
+      const k = ((y / F) | 0) * cc + ((x / F) | 0);
+      occ[k] += 1; let a = ind.get(q); if (!a) { a = new Float32Array(M); ind.set(q, a); } a[k] += 1; cnt.set(q, (cnt.get(q) || 0) + 1);
+    }
+    const sig = 1.6, R = 4, ker = []; let ks = 0; for (let i = -R; i <= R; i++) { const v = Math.exp(-i * i / (2 * sig * sig)); ker.push(v); ks += v; } for (let i = 0; i < ker.length; i++) ker[i] /= ks;
+    const tmp = new Float32Array(M);
+    const blur = a => {
+      for (let y = 0; y < cr; y++) for (let x = 0; x < cc; x++) { let v = 0; for (let i = -R; i <= R; i++) { const xx = x + i; if (xx >= 0 && xx < cc) v += a[y * cc + xx] * ker[i + R]; } tmp[y * cc + x] = v; }
+      for (let y = 0; y < cr; y++) for (let x = 0; x < cc; x++) { let v = 0; for (let i = -R; i <= R; i++) { const yy = y + i; if (yy >= 0 && yy < cr) v += tmp[yy * cc + x] * ker[i + R]; } a[y * cc + x] = v; }
+    };
+    const big = [...cnt].filter(([, n]) => n >= 10).map(([q]) => q);
+    if (big.length > 1) {
+      blur(occ);
+      const toWorld = ring => ring.map(([x, y], i) => `${i ? 'L' : 'M'}${(x * F * PG.cw - WORLD / 2).toFixed(2)},${(y * F * PG.cw + PG.y0).toFixed(2)}`).join('') + 'Z';
+      const ringArea = ring => { let s = 0; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) s += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]); return Math.abs(s / 2); };
+      const minRing = 10;
+      const contour = d3.contours().size([cc, cr]).smooth(true).thresholds([0.5]);
+      const field = new Float64Array(M);
+      let bd = '';
+      for (const q of big) {
+        const a = ind.get(q); blur(a);
+        for (let k = 0; k < M; k++) field[k] = occ[k] > 0.08 ? a[k] / occ[k] : 0;
+        for (const poly of contour(field)[0].coordinates) for (const ring of poly) if (ringArea(ring) >= minRing) bd += toWorld(ring);
+      }
+      // clip to the visibly coloured ground (fine grid), so lines never run out into blank land
+      const fineW = ring => ring.map(([x, y], i) => `${i ? 'L' : 'M'}${(x * PG.cw - WORLD / 2).toFixed(2)},${(y * PG.cw + PG.y0).toFixed(2)}`).join('') + 'Z';
+      let pd = '';
+      for (const poly of d3.contours().size([cols, rows]).smooth(true).thresholds([0.24])(Float64Array.from(alpha))[0].coordinates) for (const ring of poly) if (ringArea(ring) >= minRing * 4) pd += fineW(ring);
+      if (bd && pd) {
+        // pull the clip in slightly so lines stop short of the patch edges
+        PG.bounds = new Path2D(bd); PG.pres = new Path2D(pd);
+      }
+    }
+  }
+  const areaBy = new Map();
+  for (let c = 0; c < N; c++) if (win[c] >= 0 && alpha[c] >= 0.18) areaBy.set(win[c], (areaBy.get(win[c]) || 0) + 1);
+  const minArea = Math.max(12, sigma2 * 1.2);
+  const land = communities(gs, alphaR[0], 0, minArea, lo, hi, alpha), sea = communities(gs, alphaR[1], 1, minArea, lo, hi, alpha);
+  const labels = [...land.list, ...sea.list].sort((a, b) => b.area - a.area);
+  patch = { gs: pUnit, win, sec, share, share2, local, labels, comp: [land.comp, sea.comp] };
+  const key = [...areaBy].sort((a, b) => b[1] - a[1]).slice(0, 7);
+  $('#patchkey').innerHTML = !P.on ? '' : key.length ? key.map(([q]) => `<span><span class="sw" style="background:${pUnit[q].color}"></span>${patchName(pUnit[q])}</span>`).join('')
+    : `<span style="color:var(--muted)">${state.solo ? `No ${units.find(u => u.id === state.solo).label} fossils at this time.` : `No patches for ${P.compare === 'shown' ? 'the ticked groups' : P.compare.toLowerCase()} at this time. Change “Compare” in the panel.`}</span>`;
+}
+const patchName = u => PATCH_NAMES[u.id] || u.label;
+
+/* ------------------------------------------------------------ communities */
+// adjective (for "X–Y fauna") and plural (for prose) per parent group
+const NOUN = {
+  diplodocoids: ['diplodocoid', 'diplodocoids'], macronarians: ['macronarian', 'brachiosaurs and titanosaurs'], sauropodomorphs: ['sauropodomorph', 'early sauropodomorphs'],
+  stegosaurs: ['stegosaur', 'stegosaurs'], ankylosaurs: ['ankylosaur', 'ankylosaurs'], ceratosaurs: ['ceratosaur', 'ceratosaurs and abelisaurs'],
+  carnosaurs: ['allosaur', 'allosaurs and megalosaurs'], tyrannosaurs: ['tyrannosaur', 'tyrannosaurs'], raptors: ['raptor', 'raptors'],
+  coelurosaurs: ['ornithomimid', 'ostrich mimics and oviraptors'], theropods: ['theropod', 'theropods'], pachys: ['pachycephalosaur', 'pachycephalosaurs'],
+  otherdinos: ['dinosaur', 'early dinosaurs'], hadrosaurs: ['hadrosaur', 'hadrosaurs'],
+  ornithopods: ['iguanodont', 'iguanodonts and small ornithopods'], ceratopsians: ['ceratopsian', 'ceratopsians'], pterosaurs: ['pterosaur', 'pterosaurs'], plesiosaurs: ['plesiosaur', 'plesiosaurs'],
+  ichthyosaurs: ['ichthyosaur', 'ichthyosaurs'], mosasaurs: ['mosasaur', 'mosasaurs'], crocs: ['crocodilian', 'crocodilians'],
+  turtles: ['turtle', 'turtles'], squamates: ['lizard', 'lizards and snakes'], synapsids: ['synapsid', 'synapsids'],
+  amphibians: ['amphibian', 'amphibians'], insects: ['insect', 'insects'], proboscideans: ['elephant', 'elephants and mastodons'],
+  carnivorans: ['carnivore', 'carnivores'], hoofed: ['hoofed-mammal', 'hoofed mammals'], whales: ['whale', 'whales and sea cows'],
+  mammals: ['small-mammal', 'small mammals'], birds: ['bird', 'birds'], sharks: ['shark', 'sharks and rays'],
+  armourfish: ['armoured-fish', 'armoured fish'], bonyfish: ['bony-fish', 'bony fish'], conodonts: ['conodont', 'conodonts'],
+  trilobites: ['trilobite', 'trilobites'], eurypterids: ['sea-scorpion', 'sea scorpions'], ammonites: ['ammonite', 'ammonites'],
+  nautiloids: ['nautiloid', 'nautiloids'], belemnites: ['belemnite', 'belemnites'], corals: ['coral', 'corals'],
+  brachiopods: ['brachiopod', 'brachiopods'],
+  ediacarans: ['Ediacaran', 'Ediacaran organisms'],
+  earlyplants: ['early-land-plant', 'early land plants'], lycopsids: ['lycopsid', 'clubmosses and scale trees'], horsetails: ['horsetail', 'horsetails'],
+  ferns: ['fern', 'ferns'], glossopteris: ['glossopterid', 'glossopterids'], seedferns: ['seed-fern', 'seed ferns'], cycads: ['cycad', 'cycads and bennettites'],
+  ginkgos: ['ginkgo', 'ginkgos'], conifers: ['conifer', 'conifers'], angiosperms: ['flowering-plant', 'flowering plants'], mosses: ['moss', 'mosses and liverworts'],
+  stromatolites: ['stromatolite', 'stromatolites'], cyanobacteria: ['microbial', 'cyanobacteria'], algae: ['algal', 'red and green algae'], fungi: ['fungal', 'fungi'],
+  acritarchs: ['acritarch', 'acritarchs'], dinoflagellates: ['dinoflagellate', 'dinoflagellates'], radiolarians: ['radiolarian', 'radiolarians'],
+  diatoms: ['diatom', 'diatoms'], forams: ['foram', 'foraminifera'], coccoliths: ['coccolith', 'coccolithophores'], bivalves: ['clam', 'clams and oysters'], snails: ['snail', 'snails'], echinoderms: ['echinoderm', 'sea urchins and crinoids'],
+};
+const STEGO = new Set(['Stegosaurus','Kentrosaurus','Dacentrurus','Hesperosaurus','Huayangosaurus','Tuojiangosaurus','Miragaia','Gigantspinosaurus','Chungkingosaurus','Loricatosaurus','Lexovisaurus','Wuerhosaurus','Deltapodus','Stegosauria','Stegosauridae','Alcovasaurus','Chialingosaurus','Paranthodon','Dravidosaurus']);
+const PACHY = new Set(['Stegoceras','Pachycephalosaurus','Prenocephale','Stygimoloch','Dracorex','Homalocephale','Colepiocephale','Hanssuesia','Sphaerotholus','Pachycephalosauria']);
+const CLADE_RE = /(idae|inae|oidea|formes|oda|ia|ata|morpha|ini)$/;
+// a genus-level name that says which kind of animal the group mostly is here
+function noun(gid, topGenus, plural) {
+  const t = state.t;
+  if (gid === 'synapsids') return t > 272 ? (plural ? 'pelycosaurs' : 'pelycosaur') : (plural ? 'therapsids' : 'therapsid');
+  const n = NOUN[gid]; return n ? n[plural ? 1 : 0] : gid;
+}
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+// Naming follows palaeontological practice: a fauna is named for its characteristic genus
+// (Lehman's "Triceratops fauna" and "Alamosaurus fauna", the Karoo's "Lystrosaurus Assemblage Zone",
+// Ziegler's "Pentamerus community"), land and sea assemblages are kept apart, and the rock unit is cited.
+const FORM_TAXA = new Set(['Plesiornis','Komlosaurus','Trihamus','Platypterna','Dilophosauripus','Parabrontopodus','Trisauropodiscus','Neotripodiscus','Kalosauropus','Pseudotetrasauropus','Tetrasauropus','Evazoum','Stenonyx','Argoides','Grallator','Eubrontes','Anomoepus','Otozoum','Brontozoum','Gigandipus','Kayentapus','Anchisauripus','Atreipus','Tetrapodosaurus','Caririchnium','Amblydactylus','Iguanodontipus','Hadrosaurichnus','Deltapodus','Wintonopus','Skartopus','Ornithomimipus','Magnoavipes','Irenesauripus','Columbosauripus','Hypsiloichnus','Gypsichnites','Dinosaurichnium','Sauropus','Megalosauripus','Megalosauropus','Jialingpus','Paracoelurosaurichnus','Coelurosaurichnus','Paleohelcura','Richardoestesia','Paronychodon','Troodon','Pectinodon','Zapsalis','Euronychodon','Megaloolithus','Elongatoolithus','Grallator','Eubrontes','Anomoepus','Brontopodus','Dromaeosaurus','Saurornitholestes','Aublysodon','Ricardoestesia']);
+const INVERT_SECTIONS = new Set(['Invertebrates']);
+// footprint and egg form-genera stay on the map but are not used to name faunas
+const TRACE_RE = /(pus|pous|podus|ipes|ichnus|ichnium|ichnites|oolithus|podiscus|pterna|pteryx_track|dactylus|ovum|tripodiscus|sauripus|zoum|chirus|chnia)$/i;
+// dispersed spores and pollen are form-genera too; floras are named after plant macrofossils
+const POLLEN_RE = /(spor(a|ae|is|ites|onites|ium)|pollen(ites|is)|poll(is|enia)|sacc(us|ites|ina|ate)|triletes|monoletes|colp(ites|ate|orites)|porites|pites|dites|corollina)$/i;
+function communities(gs, alpha, realm, minArea, lo, hi, shown) {
+  const cols = PG.cols, rows = PG.rows, N = cols * rows, TH = 0.15;
+  const COMP = new Int32Array(N).fill(-1);
+  const stack = new Int32Array(N), comps = [];
+  for (let c0 = 0; c0 < N; c0++) {
+    if (COMP[c0] >= 0 || alpha[c0] < TH) continue;
+    const id = comps.length, cells = []; let sp = 0, sx = 0, sy = 0, sw = 0;
+    stack[sp++] = c0; COMP[c0] = id;
+    while (sp) {
+      const c = stack[--sp]; cells.push(c);
+      const x = c % cols, y = (c / cols) | 0, w = alpha[c]; sx += x * w; sy += y * w; sw += w;
+      if (x > 0 && COMP[c - 1] < 0 && alpha[c - 1] >= TH) { COMP[c - 1] = id; stack[sp++] = c - 1; }
+      if (x < cols - 1 && COMP[c + 1] < 0 && alpha[c + 1] >= TH) { COMP[c + 1] = id; stack[sp++] = c + 1; }
+      if (y > 0 && COMP[c - cols] < 0 && alpha[c - cols] >= TH) { COMP[c - cols] = id; stack[sp++] = c - cols; }
+      if (y < rows - 1 && COMP[c + cols] < 0 && alpha[c + cols] >= TH) { COMP[c + cols] = id; stack[sp++] = c + cols; }
+    }
+    let vis = 0; for (const c of cells) if (shown[c] > vis) vis = shown[c];
+    const mass = gs.map(g => { if (g.realm !== realm) return 0; let m = 0; for (const c of cells) m += g.d[c]; return m; });
+    comps.push({ id, realm, vis, area: cells.length, mass, x: (sx / sw + 0.5) * PG.cw - WORLD / 2, y: (sy / sw + 0.5) * PG.cw + PG.y0, gen: new Map(), form: new Map(), env: new Map(), formW: 0, envW: 0 });
+  }
+  // genera, formations and environments, counted from the records of this realm
+  const GW = new Map();
+  gs.forEach((g, j) => {
+    if (g.realm !== realm) return;
+    for (const u of g.members) {
+      const [a, b] = ranges[u.idx];
+      for (let i = a; i < b; i++) {
+        if (REC.r[i] !== realm || REC.hi[i] < lo || REC.lo[i] > hi) continue;
+        const ov = Math.min(REC.hi[i], hi) - Math.max(REC.lo[i], lo), e = REC.n[i] * Math.min(ov / REC.span[i], 1); if (e <= 0) continue;
+        if (REC.g[i]) GW.set(REC.g[i], (GW.get(REC.g[i]) || 0) + e);
+        const k = COMP[PG.cellOf[i]]; if (k < 0) continue;
+        const C = comps[k];
+        if (REC.g[i]) { const key = j * 65536 + REC.g[i]; C.gen.set(key, (C.gen.get(key) || 0) + e); }
+        if (REC.f[i]) { C.form.set(REC.f[i], (C.form.get(REC.f[i]) || 0) + e); }
+        if (REC.e[i]) { C.env.set(REC.e[i], (C.env.get(REC.e[i]) || 0) + e); C.envW += e; }
+        C.formW += e;
+      }
+    }
+  });
+  const big = comps.filter(C => C.area >= minArea && C.vis >= 0.22);
+  const world = gs.map((_, j) => big.reduce((s, C) => s + C.mass[j], 0)), worldT = world.reduce((a, b) => a + b, 0) || 1;
+  const TRACES = D.traceSet || (D.traceSet = new Set(D.trace_genera || []));
+  const okGenus = n => n && !CLADE_RE.test(n) && !FORM_TAXA.has(n) && !POLLEN_RE.test(n) && !TRACE_RE.test(n) && !TRACES.has(n);
+  for (const C of big) {
+    const tot = C.mass.reduce((a, b) => a + b, 0) || 1;
+    C.shares = C.mass.map((m, j) => ({ j, s: m / tot, lift: (m / tot) / ((world[j] / worldT) || 1) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s);
+    const topGen = j => { let best = null, bv = 0; for (const [key, v] of C.gen) if ((key / 65536 | 0) === j && v > bv && okGenus(D.genera[key % 65536])) { bv = v; best = D.genera[key % 65536]; } return best; };
+    // characteristic genus: common here and concentrated here (weight squared over its world-wide weight)
+    const cand = [...C.gen].map(([key, w]) => ({ j: key / 65536 | 0, name: D.genera[key % 65536], w, score: w * w / (GW.get(key % 65536) || w) }))
+      .filter(x => okGenus(x.name) && x.w >= 1).sort((a, b) => b.score - a.score);
+    const g1 = cand[0], g2 = g1 && cand.find(x => x !== g1 && gs[x.j].u.id !== gs[g1.j].u.id && x.score >= 0.55 * g1.score);
+    const top = C.shares[0] && gs[C.shares[0].j].u;
+    const invert = top && INVERT_SECTIONS.has(top.section);
+    C.suffix = top && top.section === 'Plants' ? ' flora' : top && top.section === 'Microbes & plankton' ? ' assemblage' : realm === 1 && invert ? ' community' : ' fauna';
+    C.genus = g1 ? (g2 ? `${g1.name}–${g2.name}` : g1.name) : '';
+    C.lead = g1 ? '' : cap(noun(top.id, topGen(C.shares[0].j), false));
+    C.title = (C.genus || C.lead) + C.suffix;
+    const sub = [];
+    let fb = 0, fv = 0; for (const [f, v] of C.form) if (v > fv) { fv = v; fb = f; }
+    if (fb && fv >= 2 && fv / C.formW >= 0.2) { const fn = D.formations[fb]; sub.push(/(Formation|Group|Beds|Fm\.?)$/i.test(fn) ? fn : fn + ' Fm.'); }
+    let eb = 0, ev = 0; for (const [e, v] of C.env) if (v > ev) { ev = v; eb = e; }
+    sub.push(eb && ev / C.envW >= 0.3 ? D.envs[eb] : realm ? 'marine' : 'on land');
+    C.sub = sub.join(' · ');
+    const dist = C.shares.filter(x => x.s >= 0.06 && x.lift >= 1.6 && x.j !== C.shares[0].j).sort((a, b) => b.lift - a.lift)[0];
+    C.rich = big.length > 1 && dist ? noun(gs[dist.j].u.id, topGen(dist.j), true) : '';
+    C.comp = C.shares.slice(0, 5).filter(x => x.s >= 0.03).map(x => ({ name: cap(noun(gs[x.j].u.id, topGen(x.j), true)), s: x.s, color: gs[x.j].u.color }));
+    C.genera = [...C.gen].filter(([key]) => okGenus(D.genera[key % 65536])).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([key]) => D.genera[key % 65536]);
+  }
+  return { list: big, comp: COMP };
+}
+function patchAt(mx, my) {
+  if (!patch || !P.on) return null;
+  const wx = (mx - tform.x) / tform.k, wy = (my - tform.y) / tform.k;
+  const cx = Math.floor((wx + WORLD / 2) / PG.cw), cy = Math.floor((wy - PG.y0) / PG.cw);
+  if (cx < 0 || cy < 0 || cx >= PG.cols || cy >= PG.rows) return null;
+  const c = cy * PG.cols + cx, w = patch.win[c];
+  if (w < 0) return null;
+  if (P.clip && !ctx.isPointInPath(landPathScreen(), mx * DPR, my * DPR)) return null;
+  const Cs = [0, 1].map(r => { const ci = patch.comp[r][c]; return ci >= 0 ? patch.labels.find(L => L.realm === r && L.id === ci) : null; }).filter(Boolean);
+  return { Cs, g: { u: patch.gs[w] }, share: patch.share[c], s: patch.sec[c] >= 0 ? { u: patch.gs[patch.sec[c]] } : null, share2: patch.share2[c], local: patch.local[c] };
+}
+function landPathScreen() { ctx.setTransform(DPR * tform.k, 0, 0, DPR * tform.k, DPR * tform.x, DPR * tform.y); return landPath; }
+
+function setupLayers() {
+  const sel = $('#opt-compare');
+  sel.innerHTML = '<option value="shown">Ticked groups</option>' + [...new Set(units.map(u => u.section))].map(s => `<option value="${s}">${s} only</option>`).join(''); sel.value = P.compare;
+  const upd = () => {
+    P.ice = $('#opt-ice').checked; P.belts = $('#opt-belts').checked; P.on = $('#opt-patches').checked; P.icons = $('#opt-icons').checked; P.names = $('#opt-names').checked; P.bounds = $('#opt-bounds').checked; P.ext = $('#opt-ext').checked; P.mode = $('#opt-mode').value;
+    P.compare = sel.value; P.spread = +$('#opt-spread').value; P.clip = $('#opt-clip').checked;
+    patchSig = ''; hidePop(); render(); drawTimeline(); showExtinction(); showClimate();
+  };
+  $('#curve').addEventListener('change', e => { P.curve = e.target.value; drawTimeline(); });
+  ['#opt-ice', '#opt-belts', '#opt-patches', '#opt-icons', '#opt-names', '#opt-bounds', '#opt-ext', '#opt-mode', '#opt-compare', '#opt-spread', '#opt-clip'].forEach(id => $(id).addEventListener('change', upd));
+}
+
+/* ------------------------------------------------------------ map */
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  const tl = $('#tl-canvas'); tl.width = tl.clientWidth * DPR; tl.height = tl.clientHeight * DPR;
+  drawTimeline(); render();
+}
+let zoom;
+function fitTransform() {
+  // fit 168°W..190°E and 72°N..58°S into the free area
+  const narrow = W < 760;
+  const top = narrow ? 120 : 20, bottom = narrow ? 217 : 197, right = narrow ? 0 : 330;
+  const x0 = proj([-170, 0])[0], x1 = WORLD / 2, y0 = proj([0, 74])[1], y1 = proj([0, -56])[1];
+  const k = Math.min((W - right) / (x1 - x0), (H - top - bottom) / (y1 - y0));
+  const tx = ((W - right) - k * (x0 + x1)) / 2, ty = top + ((H - top - bottom) - k * (y0 + y1)) / 2;
+  return d3.zoomIdentity.translate(tx, ty).scale(k);
+}
+function setupZoom() {
+  const f = fitTransform();
+  const [, yN] = proj([0, 84]), [, yS] = proj([0, -84]);
+  zoom = d3.zoom().scaleExtent([f.k * 0.7, f.k * 60])
+    .translateExtent([[-WORLD * 0.75, yN - 40], [WORLD * 0.75, yS + 40]])
+    .filter(e => !e.button && !(e.type === 'dblclick' && false))
+    .on('start', () => canvas.classList.add('dragging'))
+    .on('end', () => canvas.classList.remove('dragging'))
+    .on('zoom', e => { tform = e.transform; hidePop(); tip.hidden = true; render(); });
+  d3.select(canvas).call(zoom).call(zoom.transform, f);
+  $('#zin').onclick = () => d3.select(canvas).transition().duration(250).call(zoom.scaleBy, 1.6);
+  $('#zout').onclick = () => d3.select(canvas).transition().duration(250).call(zoom.scaleBy, 1 / 1.6);
+}
+
+let raf = 0;
+function render() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); }); }
+
+const CELL = 42;
+function draw() {
+  if (!D) return;
+  const k = tform.k, tx = tform.x, ty = tform.y, t = state.t, Hw = winH(t);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = css('--ocean'); ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(DPR * k, 0, 0, DPR * k, DPR * tx, DPR * ty);
+  ctx.strokeStyle = css('--grat'); ctx.lineWidth = 1 / k; ctx.stroke(gratPath);
+  ctx.fillStyle = css('--land'); ctx.fill(landPath);
+  if (P.belts && CL) drawBelts(k);
+  if (P.on) {
+    const sig = [state.t, P.mode, P.compare, P.spread, units.filter(isShown).map(u => u.id).join(','), isDark()].join('|');
+    if (sig !== patchSig) { patchSig = sig; computePatches(); }
+    ctx.save();
+    if (P.clip) ctx.clip(landPath);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(PG.canvas, -WORLD / 2, PG.y0, PG.cols * PG.cw, PG.rows * PG.cw);
+    if (P.bounds && PG.bounds) {
+      ctx.clip(PG.pres);
+      ctx.strokeStyle = css('--ink'); ctx.globalAlpha = isDark() ? 0.3 : 0.22; ctx.lineWidth = 1 / k; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke(PG.bounds); ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  } else $('#patchkey').innerHTML = '';
+  if (P.ice && CL) drawIce(k);
+  ctx.strokeStyle = css('--coast'); ctx.lineWidth = 0.7 / k; ctx.stroke(landPath);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  // aggregate visible records into screen cells
+  const cellDeg = CELL / (k * WORLD / 360);
+  const fScale = Math.min(30, Math.max(0.12, Math.pow(cellDeg / 5, 0.7)));
+  const cells = new Map();
+  const lo = t - Hw, hi = t + Hw, M = 40;
+  let shownTotal = 0, groupsShown = 0;
+  for (const u of units) {
+    if (!isShown(u)) continue;
+    const sv = seriesAt(u, t); if (sv < 0.05) continue;
+    shownTotal += sv; groupsShown++;
+    const [a, b] = ranges[u.idx];
+    const ucells = new Map();
+    for (let i = a; i < b; i++) {
+      if (REC.hi[i] < lo || REC.lo[i] > hi) continue;
+      const sx = REC.x[i] * k + tx; if (sx < -M || sx > W + M) continue;
+      const sy = REC.y[i] * k + ty; if (sy < -M || sy > H + M) continue;
+      const ov = Math.min(REC.hi[i], hi) - Math.max(REC.lo[i], lo);
+      const e = REC.n[i] * Math.min(ov / REC.span[i], 1);
+      if (e <= 0) continue;
+      const key = (Math.floor(sy / CELL) + 10) * 10000 + Math.floor(sx / CELL) + 10;
+      let c = ucells.get(key); if (!c) { c = [0, 0, 0]; ucells.set(key, c); }
+      c[0] += e; c[1] += e * sx; c[2] += e * sy;
+    }
+    const peak = u.peak * fScale;
+    for (const [key, c] of ucells) {
+      const rel = Math.min(1, c[0] / peak);
+      let cell = cells.get(key); if (!cell) { cell = []; cells.set(key, cell); }
+      cell.push({ u, e: c[0], rel, x: c[1] / c[0], y: c[2] / c[0], pri: rel * (u.kind === 'genus' ? 2.2 : 1) + (state.solo ? 1 : 0) });
+    }
+  }
+  // choose icons per cell
+  const items = [];
+  const slots = [[0, 0], [0.62, -0.42], [-0.62, 0.42], [0.62, 0.48]];
+  const perCell = k > 25 ? 4 : 3;
+  for (const [key, list] of cells) {
+    list.sort((p, q) => q.pri - p.pri);
+    const top = list.filter(o => o.rel > 0.015).slice(0, perCell);
+    if (!top.length) continue;
+    const ax = top[0].x, ay = top[0].y;
+    const s0 = 14 + 28 * Math.sqrt(top[0].rel);
+    top.forEach((o, j) => {
+      const s = 14 + 28 * Math.sqrt(o.rel);
+      const [dx, dy] = slots[j];
+      const x = j === 0 ? ax : ax + dx * (s0 + s) * 0.55, y = j === 0 ? ay : ay + dy * (s0 + s) * 0.55;
+      items.push({ o, x, y, s, a: 0.4 + 0.6 * Math.sqrt(o.rel), key, more: j === top.length - 1 ? list.length - top.length : 0 });
+    });
+  }
+  items.sort((p, q) => p.s - q.s);
+  if (!P.icons) items.length = 0;
+  for (const it of items) {
+    ctx.globalAlpha = it.a;
+    ctx.drawImage(iconCanvas[it.o.u.id], it.x - it.s / 2, it.y - it.s / 2, it.s, it.s);
+  }
+  ctx.globalAlpha = 1;
+  drawFocusMarks();
+  if (P.on && patch && P.names) drawPatchLabels();
+  if (P.ext) drawExtinctionSites();
+  drawn = items; cellsLast = cells;
+  $('#stats').textContent = groupsShown ? `≈${Math.round(shownTotal).toLocaleString()} fossil records from ${groupsShown} group${groupsShown > 1 ? 's' : ''} in this ${2 * winH(t)}-Myr window` : 'No fossils from the selected groups at this time';
+}
+
+function drawPatchLabels() {
+  const k = tform.k, ink = css('--ink'), muted = css('--muted'), halo = css('--halo');
+  const cr = canvas.getBoundingClientRect();
+  const boxes = ['#readout', '#legend', '#timeline', '#zoomctl', '#legend-toggle'].map(q => document.querySelector(q)).filter(e => e && e.offsetParent !== null)
+    .map(e => { const r = e.getBoundingClientRect(); return [r.left - cr.left, r.top - cr.top, r.right - cr.left, r.bottom - cr.top]; });
+  const nPanels = boxes.length;
+  ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.textAlign = 'left';
+  const stroked = (txt, x, y, col) => { ctx.strokeStyle = halo; ctx.lineWidth = 4; ctx.globalAlpha = .92; ctx.strokeText(txt, x, y); ctx.globalAlpha = 1; ctx.fillStyle = col; ctx.fillText(txt, x, y); };
+  for (const L of patch.labels) {
+    const sx = L.x * k + tform.x, sy = L.y * k + tform.y;
+    if (sx < 0 || sy < 0 || sx > W || sy > H) continue;
+    const size = Math.max(12, Math.min(16.5, 10 + Math.sqrt(L.area) * 0.3 * Math.sqrt(k / 2)));
+    const fG = `italic 600 ${size}px "IBM Plex Sans", system-ui, sans-serif`, fS = `600 ${size}px "IBM Plex Sans", system-ui, sans-serif`;
+    const f2 = `400 ${Math.max(10.5, size - 2.5)}px "IBM Plex Sans", system-ui, sans-serif`;
+    const head = L.genus || L.lead;
+    ctx.font = L.genus ? fG : fS; const wh = ctx.measureText(head).width;
+    ctx.font = fS; const ws = ctx.measureText(L.suffix).width;
+    ctx.font = f2; const wsub = ctx.measureText(L.sub).width;
+    const w = Math.max(wh + ws, wsub), h = size * 2.3;
+    const b = [sx - w / 2 - 6, sy - h / 2, sx + w / 2 + 6, sy + h / 2];
+    if (b[0] < 0 || b[2] > W) continue;
+    if (boxes.some(o => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1])) continue;
+    boxes.push(b);
+    const y1 = sy - size * 0.55, x0 = sx - (wh + ws) / 2;
+    ctx.font = L.genus ? fG : fS; stroked(head, x0, y1, ink);
+    ctx.font = fS; stroked(L.suffix, x0 + wh, y1, ink);
+    ctx.font = f2; stroked(L.sub, sx - wsub / 2, sy + size * 0.62, muted);
+    if (boxes.length - nPanels >= 12) break;
+  }
+  ctx.textAlign = 'start';
+}
+
+/* ------------------------------------------------------------ hover */
+const tip = $('#tip');
+function topGenera(u, key, n) {
+  const k = tform.k, tx = tform.x, ty = tform.y, lo = state.t - winH(state.t), hi = state.t + winH(state.t);
+  const cy = Math.floor(key / 10000) - 10, cx = key % 10000 - 10, [a, b] = ranges[u.idx], gen = new Map();
+  for (let i = a; i < b; i++) {
+    if (REC.hi[i] < lo || REC.lo[i] > hi) continue;
+    const sx = REC.x[i] * k + tx, sy = REC.y[i] * k + ty;
+    if (Math.floor(sx / CELL) !== cx || Math.floor(sy / CELL) !== cy) continue;
+    const ov = Math.min(REC.hi[i], hi) - Math.max(REC.lo[i], lo), e = REC.n[i] * Math.min(ov / REC.span[i], 1);
+    if (e > 0 && REC.g[i]) gen.set(REC.g[i], (gen.get(REC.g[i]) || 0) + e);
+  }
+  return [...gen].sort((p, q) => q[1] - p[1]).slice(0, n).map(([g]) => D.genera[g]);
+}
+let hoverRaf = 0, hoverEv = null;
+canvas.addEventListener('pointermove', ev => {
+  if (ev.pointerType !== 'mouse' || ev.buttons) { tip.hidden = true; return; }
+  hoverEv = ev; if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; hover(hoverEv); });
+});
+canvas.addEventListener('pointerleave', () => { tip.hidden = true; });
+function hover(ev) {
+  const r = canvas.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  let hit = null;
+  for (let i = drawn.length - 1; i >= 0; i--) { const it = drawn[i]; if (Math.abs(mx - it.x) < it.s / 2 + 2 && Math.abs(my - it.y) < it.s / 2 + 2) { hit = it; break; } }
+  let html = '';
+  if (hit) {
+    const u = hit.o.u, gens = topGenera(u, hit.key, 3);
+    const name = u.kind === 'genus' ? `<i>${u.label}</i>` : u.label;
+    html = `<b>${name}</b><div class="t-sub">${u.section} · ≈${fmt(hit.o.e)} fossil records here</div>` +
+      (gens.length && u.kind !== 'genus' ? `<div class="t-gen">Mostly <i>${gens.join('</i>, <i>')}</i></div>` : '') +
+      `<div class="t-sub">${Math.round(hit.o.rel * 100)}% of its peak abundance · click for details</div>`;
+    canvas.style.cursor = 'pointer';
+  } else {
+    canvas.style.cursor = '';
+    const p = patchAt(mx, my);
+    if (p) {
+      const pct = Math.round(p.share * 100);
+      const what = P.mode === 'focus' ? `strongest group here (${pct}% of the weighted mix)` : `${pct}% of nearby fossils${P.compare === 'shown' ? ' from ticked groups' : ''}`;
+      html = p.Cs.map(C => `<b>${C.genus ? `<i>${C.genus}</i>` : C.lead}${C.suffix}</b><div class="t-sub">${C.realm ? 'Sea' : 'Land'} · ${C.sub}</div><div class="t-comp">${C.comp.map(x => `<span><span class="sw" style="background:${x.color}"></span>${x.name} ${Math.round(x.s * 100)}%</span>`).join('')}</div>` +
+        (C.genera.length ? `<div class="t-gen">Typical: <i>${C.genera.join('</i>, <i>')}</i></div>` : '') + (C.rich ? `<div class="t-sub">Unusually rich in ${C.rich}</div>` : '') + '<div class="t-rule"></div>').join('') +
+        `<div><span class="sw" style="background:${p.g.u.color}"></span>Right here: <b>${patchName(p.g.u)}</b></div><div class="t-sub">${what}</div>` +
+        (p.s && p.share2 > 0.08 ? `<div class="t-sub">Next: ${patchName(p.s.u)} ${Math.round(p.share2 * 100)}%</div>` : '') +
+        (p.local < 2 ? `<div class="t-sub">Based on very few fossils</div>` : '');
+    }
+    const ct = climateTip(mx, my); if (ct) html += (html ? '<div class="t-rule"></div>' : '') + ct;
+  }
+  if (!html) { tip.hidden = true; return; }
+  tip.innerHTML = html; tip.hidden = false;
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = mx + 16, y = my + 14;
+  if (x + tw > W - 8) x = mx - tw - 12; if (y + th > H - 8) y = my - th - 10;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+
+/* ------------------------------------------------------------ popup */
+const pop = $('#pop');
+function hidePop() { pop.hidden = true; }
+function fmt(v) { return v >= 10 ? Math.round(v).toLocaleString() : v >= 1 ? v.toFixed(1) : v.toFixed(2); }
+canvas.addEventListener('click', ev => {
+  if (ev.defaultPrevented) return;
+  tip.hidden = true;
+  const r = canvas.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  let hit = null;
+  for (let i = drawn.length - 1; i >= 0; i--) { const it = drawn[i]; if (Math.abs(mx - it.x) < it.s / 2 + 2 && Math.abs(my - it.y) < it.s / 2 + 2) { hit = it; break; } }
+  if (!hit) { hidePop(); return; }
+  showPop(hit, mx, my);
+});
+function showPop(hit, mx, my) {
+  const list = cellsLast.get(hit.key) || [];
+  const k = tform.k, tx = tform.x, ty = tform.y, t = state.t, lo = t - winH(t), hi = t + winH(t);
+  const cy = Math.floor(hit.key / 10000) - 10, cx = hit.key % 10000 - 10;
+  const sorted = [...list].sort((p, q) => (q.u === hit.o.u) - (p.u === hit.o.u) || q.e - p.e).slice(0, 8);
+  let html = `<button class="close" aria-label="Close">×</button><h3>Fossils here</h3><div class="sub">${fmtMa(t)} Ma ± ${winH(t)} Myr · present-day location</div>`;
+  for (const o of sorted) {
+    const u = o.u, [a, b] = ranges[u.idx], gen = new Map();
+    for (let i = a; i < b; i++) {
+      if (REC.hi[i] < lo || REC.lo[i] > hi) continue;
+      const sx = REC.x[i] * k + tx, sy = REC.y[i] * k + ty;
+      if (Math.floor(sx / CELL) !== cx || Math.floor(sy / CELL) !== cy) continue;
+      const ov = Math.min(REC.hi[i], hi) - Math.max(REC.lo[i], lo);
+      const e = REC.n[i] * Math.min(ov / REC.span[i], 1); if (e <= 0) continue;
+      gen.set(REC.g[i], (gen.get(REC.g[i]) || 0) + e);
+    }
+    const tops = [...gen].filter(([g]) => g > 0).sort((p, q) => q[1] - p[1]).slice(0, 5);
+    const linkDP = DINOPICS.has(u.section) || DINOPICS_UNITS.has(u.id);
+    const gl = tops.map(([g]) => {
+      const name = D.genera[g];
+      const href = linkDP ? `https://dinosaurpictures.org/${encodeURIComponent(name)}-pictures` : `https://paleobiodb.org/classic/checkTaxonInfo?taxon_name=${encodeURIComponent(name)}`;
+      return `<a href="${href}" target="_blank" rel="noopener"><i>${name}</i></a>`;
+    }).join(', ');
+    html += `<div class="grp"><img src="${iconURL[u.id]}" alt=""><div><b>${u.label}</b></div><div class="n">≈${fmt(o.e)}</div>${gl ? `<div class="gen">${gl}${linkDP ? '' : ' <span class="pb">PBDB</span>'}</div>` : ''}</div>`;
+  }
+  if (list.length > sorted.length) html += `<div class="sub" style="margin:6px 0 0">and ${list.length - sorted.length} more groups. Zoom in to separate them.</div>`;
+  pop.innerHTML = html; pop.hidden = false;
+  pop.querySelector('.close').onclick = hidePop;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let x = mx + 14, y = my - 20;
+  if (x + pw > W - 16) x = mx - pw - 14; if (x < 16) x = 16;
+  if (y + ph > H - 150) y = H - 150 - ph; if (y < 16) y = 16;
+  pop.style.left = x + 'px'; pop.style.top = y + 'px';
+}
+
+/* ------------------------------------------------------------ timeline */
+const tl = $('#tl-canvas'), tg = tl.getContext('2d');
+function drawTimeline() {
+  if (!D) return;
+  const w = tl.width, h = tl.height, d = DPR;
+  tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, w, h);
+  const X = t => tToF(t) * w;
+  const bandH = 16 * d, curveTop = bandH + 3 * d, axisH = 13 * d, curveH = h - curveTop - axisH;
+  // periods
+  let prev = 0;
+  tg.font = `500 ${10.5 * d}px "IBM Plex Sans", sans-serif`; tg.textBaseline = 'middle';
+  for (const [name, base, col] of PERIODS) {
+    const x0 = X(base), x1 = X(prev);
+    tg.fillStyle = col; tg.fillRect(x0, 0, x1 - x0, bandH);
+    const label = (x1 - x0) > tg.measureText(name).width + 8 * d ? name : (x1 - x0) > 14 * d ? name.slice(0, 1) : '';
+    const [, , L] = hexToHsl(col); tg.fillStyle = L < 45 ? '#ffffff' : '#1b2a2e'; tg.textAlign = 'center'; if (label) tg.fillText(label, (x0 + x1) / 2, bandH / 2 + d * .5);
+    prev = base;
+  }
+  const solo = state.solo && units.find(u => u.id === state.solo);
+  const base = curveTop + curveH;
+  if (P.curve === 'fossils' || !CL) {
+    // abundance curve of shown groups
+    const shown = units.filter(isShown);
+    const vals = new Float32Array(Math.ceil(w) + 1);
+    let mx = 0;
+    for (let x = 0; x <= w; x++) { const t = fToT(x / w); let s = 0; for (const u of shown) s += seriesAt(u, t) / (state.solo ? 1 : u.max); vals[x] = s; if (s > mx) mx = s; }
+    tg.beginPath(); tg.moveTo(0, base);
+    for (let x = 0; x <= w; x++) tg.lineTo(x, base - (mx ? Math.sqrt(vals[x] / mx) : 0) * curveH);
+    tg.lineTo(w, base); tg.closePath();
+    tg.fillStyle = solo ? unitColor(solo) : css('--muted'); tg.globalAlpha = .38; tg.fill(); tg.globalAlpha = 1;
+  } else {
+    // climate curve: median line with uncertainty band, gaps where there is no estimate
+    const spec = {
+      temp: { get: c => c.gmst ? [c.gmst[0], c.gmst[2], c.gmst[4]] : null, lo: 5, hi: 40, log: false, ref: 14, refLab: '14 °C today', col: '#c2552f', unit: '°C', ticks: [10, 20, 30, 40] },
+      co2: { get: c => c.co2, lo: 150, hi: 1e6, log: true, ref: 280, refLab: '280 ppm pre-industrial', col: '#6b6f7a', unit: 'ppm', ticks: [1e3, 1e4, 1e5, 1e6] },
+      o2: { get: c => c.o2, lo: 1e-6, hi: 40, log: true, ref: 20.9, refLab: '21% today', col: '#2f7fa6', unit: '%', ticks: [1e-4, 1e-2, 1, 10] },
+      ice: { get: c => { const f = v => v == null ? 0 : (1 - Math.sin(v * Math.PI / 180)) / 2; const v = (f(c.ice[0]) + f(c.ice[1])) * 100; return [v, v, v]; }, lo: 0, hi: 100, log: false, ref: null, col: '#5a8fb0', unit: '% of surface', ticks: [25, 50, 75, 100] },
+    }[P.curve];
+    const Y = v => { const f = spec.log ? (Math.log10(Math.max(v, spec.lo)) - Math.log10(spec.lo)) / (Math.log10(spec.hi) - Math.log10(spec.lo)) : (v - spec.lo) / (spec.hi - spec.lo); return base - Math.max(0, Math.min(1, f)) * curveH; };
+    const pts = []; for (let x = 0; x <= w; x += d) { const t = fToT(x / w); pts.push([x, spec.get(climateAt(t))]); }
+    // faint grid + labels
+    tg.font = `400 ${9 * d}px "IBM Plex Mono", monospace`; tg.textBaseline = 'middle'; tg.textAlign = 'left';
+    const lab = v => spec.log ? (v >= 1000 ? (v / 1000) + 'k' : v < 1 ? '10' + toSup(String(Math.round(Math.log10(v)))) : v) : v;
+    for (const v of spec.ticks) { const yy = Y(v); tg.fillStyle = css('--line'); tg.fillRect(0, yy, w, Math.max(1, d * .6)); tg.fillStyle = css('--muted'); tg.fillText(lab(v) + (v === spec.ticks[spec.ticks.length - 1] ? ' ' + spec.unit : ''), 3 * d, yy + 5 * d); }
+    const runs = []; let cur = null;
+    for (const [x, v] of pts) { if (v) { (cur = cur || []).push([x, v]); } else if (cur) { runs.push(cur); cur = null; } }
+    if (cur) runs.push(cur);
+    for (const r of runs) {
+      tg.beginPath(); r.forEach(([x, v], i) => i ? tg.lineTo(x, Y(v[2])) : tg.moveTo(x, Y(v[2]))); for (let i = r.length - 1; i >= 0; i--) tg.lineTo(r[i][0], Y(r[i][1][0])); tg.closePath();
+      tg.fillStyle = spec.col; tg.globalAlpha = P.curve === 'ice' ? .4 : .22; tg.fill(); tg.globalAlpha = 1;
+      if (P.curve === 'ice') { tg.lineTo(r[r.length - 1][0], base); }
+      tg.beginPath(); r.forEach(([x, v], i) => i ? tg.lineTo(x, Y(v[1])) : tg.moveTo(x, Y(v[1]))); tg.strokeStyle = spec.col; tg.lineWidth = 1.6 * d; tg.stroke();
+    }
+    if (P.curve === 'ice') for (const r of runs) { tg.beginPath(); tg.moveTo(r[0][0], base); r.forEach(([x, v]) => tg.lineTo(x, Y(v[1]))); tg.lineTo(r[r.length - 1][0], base); tg.closePath(); tg.fillStyle = spec.col; tg.globalAlpha = .35; tg.fill(); tg.globalAlpha = 1; }
+    if (spec.ref != null) { const yy = Y(spec.ref); tg.strokeStyle = css('--muted'); tg.lineWidth = d; tg.setLineDash([3 * d, 3 * d]); tg.beginPath(); tg.moveTo(0, yy); tg.lineTo(w, yy); tg.stroke(); tg.setLineDash([]); tg.fillStyle = css('--muted'); tg.textAlign = 'right'; tg.fillText(spec.refLab, w - 4 * d, yy - 5 * d); }
+    tg.textBaseline = 'alphabetic';
+  }
+  if (FOCUS) {
+    const F = FOCUS, xa = X(F.hi), xb = X(F.lo);
+    tg.fillStyle = css('--accent'); tg.globalAlpha = .14; tg.fillRect(xa, curveTop, Math.max(2 * d, xb - xa), curveH); tg.globalAlpha = 1;
+    // the genus's own record through time
+    let m = 0; for (let k = Math.floor(F.lo); k <= Math.ceil(F.hi) && k <= 4000; k++) m = Math.max(m, F.B[k]);
+    tg.beginPath(); tg.moveTo(xa, base);
+    for (let x = Math.floor(xa); x <= Math.ceil(xb); x++) { const t = fToT(x / w); const v = F.B[Math.max(0, Math.min(4000, Math.floor(t)))] || 0; tg.lineTo(x, base - (m ? Math.sqrt(v / m) : 0) * curveH * .9); }
+    tg.lineTo(xb, base); tg.closePath(); tg.fillStyle = css('--accent'); tg.globalAlpha = .55; tg.fill(); tg.globalAlpha = 1;
+    tg.fillStyle = css('--accent'); tg.font = `italic 600 ${10.5 * d}px "IBM Plex Sans", sans-serif`; tg.textBaseline = 'top';
+    const lx = Math.min(w - 4 * d, Math.max(4 * d, (xa + xb) / 2)); tg.textAlign = lx < 60 * d ? 'left' : lx > w - 60 * d ? 'right' : 'center'; tg.fillText(F.name, lx, curveTop + 2 * d); tg.textBaseline = 'alphabetic';
+  }
+  // axis
+  tg.fillStyle = css('--muted'); tg.font = `400 ${10 * d}px "IBM Plex Mono", monospace`; tg.textBaseline = 'alphabetic';
+  const step = w / d < 520 ? 100 : 50, ticks = [4000, 3000, 2000, 1000, 800, 600];
+  for (let t = 500; t >= 0; t -= step) ticks.push(t);
+  let lastX = -1e9;
+  for (const t of ticks) { const x = X(t); if (x - lastX < 30 * d && t !== 0) continue; lastX = x; tg.fillRect(x, curveTop + curveH, d, 3 * d); tg.textAlign = t === 0 ? 'right' : t === 4000 ? 'left' : 'center'; tg.fillText(t === 0 ? 'now' : t, t === 0 ? Math.min(x, w - d) : Math.max(x, 0), h - 1 * d); }
+  // compressed-scale breaks
+  tg.strokeStyle = css('--muted'); tg.lineWidth = d; tg.setLineDash([2 * d, 2 * d]);
+  for (const t of [1000, 541]) { const x = X(t); tg.beginPath(); tg.moveTo(x, bandH); tg.lineTo(x, curveTop + curveH); tg.stroke(); }
+  tg.setLineDash([]);
+  tg.font = `italic 400 ${9.5 * d}px "IBM Plex Sans", sans-serif`; tg.textAlign = 'center'; tg.fillStyle = css('--muted');
+  tg.fillText('compressed', X(1000), curveTop + 10 * d);
+  if (P.ext) for (const e of EXTINCTIONS) {
+    const x = X(e.age); tg.fillStyle = css('--danger'); tg.globalAlpha = e.big ? 0.85 : 0.45;
+    tg.fillRect(x - (e.big ? 1 : 0.5) * d, 0, (e.big ? 2 : 1) * d, curveTop + curveH); tg.globalAlpha = 1;
+  }
+  // cursor
+  const cx = X(state.t);
+  tg.fillStyle = css('--accent'); tg.fillRect(cx - 1.5 * d, 0, 3 * d, curveTop + curveH);
+  tg.beginPath(); tg.arc(cx, bandH + 1 * d, 6 * d, 0, Math.PI * 2); tg.fill();
+  tg.strokeStyle = css('--panel-solid'); tg.lineWidth = 2 * d; tg.stroke();
+  $('#curve-label').textContent = P.curve !== 'fossils' ? '' : solo ? `Curve: ${solo.label} through time` : 'Curve: shown groups through time';
+}
+
+function intervalAt(t) {
+  if (t > 538.8) {
+    let pe = PERIODS[PERIODS.length - 1]; for (const p of PERIODS) { if (t <= p[1]) { pe = p; break; } }
+    let era = PRE_ERAS[PRE_ERAS.length - 1][0]; for (const e of PRE_ERAS) { if (t <= e[1]) { era = e[0]; break; } }
+    return { stage: era, epoch: era, period: pe[0], color: pe[2] };
+  }
+  let st = STAGES[STAGES.length - 1]; for (const s of STAGES) { if (t <= s[2]) { st = s; break; } }
+  let pe = PERIODS[PERIODS.length - 1]; for (const p of PERIODS) { if (t <= p[1]) { pe = p; break; } }
+  return { stage: st[1], epoch: st[0], period: pe[0], color: pe[2] };
+}
+function setTime(t, fromInput) {
+  state.t = Math.max(0, Math.min(MAXMA, t));
+  if (!fromInput) $('#time').value = Math.round(tToF(state.t) * 10000);
+  const iv = intervalAt(state.t);
+  const tt = fmtMa(state.t);
+  $('#ma').innerHTML = `${tt}<small>million years ago</small>`;
+  const ep = iv.epoch === iv.stage ? iv.epoch : `${iv.epoch} · ${iv.stage}`;
+  $('#interval').innerHTML = `<span class="chip" style="background:${iv.color}"></span>${iv.period} · ${ep}`;
+  $('#time').setAttribute('aria-valuetext', `${tt} million years ago, ${iv.period}`);
+  hidePop(); render(); drawTimeline(); drawSparks(); showExtinction(); showClimate();
+}
+$('#time').addEventListener('input', e => setTime(fToT(+e.target.value / 10000), true));
+
+function buildJumps() {
+  const box = $('#jumps');
+  for (const [label, t] of JUMPS) { const b = document.createElement('button'); b.textContent = label; b.onclick = () => { stop(); setTime(t); }; box.appendChild(b); }
+}
+
+/* play */
+let last = 0, playRaf = 0;
+function stop() { state.playing = false; cancelAnimationFrame(playRaf); $('#play').textContent = '▶ Play'; }
+function step(ts) {
+  if (!state.playing) return;
+  const dt = last ? (ts - last) / 1000 : 0; last = ts;
+  const sp = +$('#speed').value;
+  const nt = state.t - sp * dt * (state.t > 1000 ? 40 : state.t > 541 ? 6 : 1);
+  if (nt <= 0) { setTime(0); stop(); return; }
+  setTime(nt); playRaf = requestAnimationFrame(step);
+}
+$('#play').onclick = () => {
+  if (state.playing) return stop();
+  if (state.t <= 0.5) setTime(MAXMA);
+  state.playing = true; last = 0; $('#play').textContent = '❚❚ Pause'; playRaf = requestAnimationFrame(step);
+};
+
+/* misc UI */
+$('#all-on').onclick = () => { const anyOff = units.some(u => !u.visible); units.forEach(u => u.visible = anyOff); state.solo = null; $('#all-on').textContent = anyOff ? 'None' : 'All'; syncLegend(); render(); drawTimeline(); };
+$('#about-btn').onclick = () => { $('#about').hidden = false; };
+$('#about-close').onclick = () => { $('#about').hidden = true; };
+$('#legend-toggle').onclick = () => { const l = $('#legend'); const o = l.classList.toggle('open'); $('#legend-toggle').setAttribute('aria-expanded', o); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { hidePop(); $('#about').hidden = true; }
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === '/') { e.preventDefault(); $('#q').focus(); return; }
+  if (e.key === 'ArrowLeft') setTime(state.t + (e.shiftKey ? 10 : 1));
+  if (e.key === 'ArrowRight') setTime(state.t - (e.shiftKey ? 10 : 1));
+  if (e.key === ' ') { e.preventDefault(); $('#play').click(); }
+});
+window.addEventListener('resize', resize);
+const retheme = () => { if (!D) return; buildIcons(); render(); drawTimeline(); drawSparks(); showClimate(); };
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', retheme);
+new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+load().catch(err => { $('#loading').textContent = 'The fossil data could not be loaded. Reload the page to try again.'; console.error(err); });
+</script>
