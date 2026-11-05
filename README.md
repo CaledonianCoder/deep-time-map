@@ -23,7 +23,7 @@ An interactive Mercator map of the fossil record from 4,000 million years ago to
   - v16: Cenozoic “dinosaur” records reclassified as birds; time window stops at mass extinctions
   - v17: stem-and-leaf icon for early land plants
   - v18: continents and fossils where they were at the time (PALEOMAP plate model)
-  - v19: "Who lived here" panel overlays the timeline; new default settings (latest)
+  - v19: "Who lived here" panel overlays the timeline; new default settings; Mesozoic mammals added and early synapsids moved to their own group (latest)
 - `build/`: the Python scripts that build `fossils.json` and the HTML templates (`__ICONS__` is replaced with `icons.json`). The scripts expect the source data at the paths used in the session and will need their paths edited to rerun.
 - `build/build_paleo.py` rotates every fossil and today's coastlines to their ancient positions with pygplates and the PALEOMAP model (Scotese 2016), writing `paleo_pts.json` and `land/<age>.json`.
 - `build/build_climate.py` builds `climate.json` from PhanDA (Judd et al. 2024) and GEOCARBSULFOR (Krause et al.) outputs.
@@ -46,3 +46,5 @@ then open http://localhost:8000.
 Plate model: PALEOMAP (C. R. Scotese 2016), via the public GPlates files. Climate: PhanDA (Judd et al. 2024, Apache 2.0) and GEOCARBSULFOR (Krause et al. 2018, 2022 runs); Precambrian ranges after Catling & Zahnle 2020 and Lyons et al. 2014. Fossils: Paleobiology Database (CC BY 4.0), via exports in the petra, dinotime and naheim/PBDB_Scripts GitHub projects and direct API downloads; PaleoReefs via the palaeoverse R package; Macrostrat; Natural Earth coastlines via world-atlas; game-icons.net silhouettes (CC BY 3.0); mass extinction figures from Barnosky et al. 2011 via Our World in Data.
 
 `build/standalone.py` adds the full HTML header (doctype, character set, phone viewport) to each page in `versions/`, so the pages behave the same on GitHub Pages as they do as Claude artifacts. Run it after copying in a new version.
+
+`build/build_v19_fixes.py` adds Mesozoic mammal records from the PBDB (`data/mesozoic_mammals.json`) and moves early synapsids and mammal relatives that the source files filed with the early tetrapods into the right groups, using family names from `data/pbdb_ecology.json`.
